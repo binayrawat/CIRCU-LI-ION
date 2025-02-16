@@ -1,3 +1,14 @@
+name: Terraform Deployment
+
+on:
+  push:
+    branches:
+      - main  # Run this workflow on push to main branch
+  pull_request:
+    branches:
+      - main  # Run this workflow on PRs to main branch
+  workflow_dispatch:  # Allows manual trigger from GitHub UI
+
 jobs:
   terraform:
     name: Terraform Deployment
@@ -11,20 +22,17 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v2
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
-
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.6.0
+          terraform_version: 1.6.0  # Update to match your Terraform version
 
       - name: Terraform Init
         run: terraform init
+        working-directory: terraform/environments/dev
+
+      - name: Terraform Format
+        run: terraform fmt -check
         working-directory: terraform/environments/dev
 
       - name: Terraform Plan
