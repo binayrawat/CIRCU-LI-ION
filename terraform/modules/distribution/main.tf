@@ -10,7 +10,7 @@ resource "aws_cloudfront_distribution" "recipe_distribution" {
   }
 
   enabled             = true
-  is_ipv6_enabled    = true
+  is_ipv6_enabled     = true
   default_root_object = "index.html"
 
   default_cache_behavior {
@@ -61,8 +61,8 @@ resource "aws_s3_bucket_policy" "cloudfront_access" {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid       = "AllowCloudFrontAccess"
-        Effect    = "Allow"
+        Sid    = "AllowCloudFrontAccess"
+        Effect = "Allow"
         Principal = {
           AWS = aws_cloudfront_origin_access_identity.oai.iam_arn
         }

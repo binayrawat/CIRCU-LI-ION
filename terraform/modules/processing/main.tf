@@ -57,11 +57,11 @@ resource "aws_iam_role_policy" "lambda_policy" {
 # Here's our actual Lambda function
 # This is like our robot chef that processes recipes
 resource "aws_lambda_function" "recipe_processor" {
-  filename         = var.lambda_zip_path
-  function_name    = "recipe_processor_${var.environment}"
-  role            = aws_iam_role.lambda_role.arn
-  handler         = "index.handler"
-  runtime         = "nodejs18.x"
+  filename      = var.lambda_zip_path
+  function_name = "recipe_processor_${var.environment}"
+  role          = aws_iam_role.lambda_role.arn
+  handler       = "index.handler"
+  runtime       = "nodejs18.x"
 
   # These are like settings we tell our robot chef about
   environment {
@@ -111,11 +111,11 @@ resource "aws_cloudwatch_metric_alarm" "lambda_errors" {
   evaluation_periods  = "1"
   metric_name         = "Errors"
   namespace           = "AWS/Lambda"
-  period             = "300"
-  statistic          = "Sum"
-  threshold          = "0"
-  alarm_description  = "Lambda function error rate"
-  alarm_actions      = [aws_sns_topic.alerts.arn]
+  period              = "300"
+  statistic           = "Sum"
+  threshold           = "0"
+  alarm_description   = "Lambda function error rate"
+  alarm_actions       = [aws_sns_topic.alerts.arn]
 }
 
 resource "aws_sns_topic" "alerts" {
