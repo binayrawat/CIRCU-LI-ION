@@ -54,13 +54,13 @@ resource "aws_s3_bucket_policy" "recipe_policy" {
         Effect    = "Deny",
         Principal = "*",
         Action    = "s3:*",
-        Resource  = [
+        Resource = [
           aws_s3_bucket.recipe_storage.arn,
           "${aws_s3_bucket.recipe_storage.arn}/*"
         ],
         Condition = {
           Bool = {
-            "aws:SecureTransport": "false"
+            "aws:SecureTransport" : "false"
           }
         }
       }
