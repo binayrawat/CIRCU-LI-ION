@@ -3,10 +3,10 @@ name: Terraform Deployment
 on:
   push:
     branches:
-      - main  # Run this workflow on push to main branch
+      - main  # Run on push to the main branch
   pull_request:
     branches:
-      - main
+      - main  # Run on PRs to the main branch
 
 jobs:
   terraform:
@@ -18,28 +18,28 @@ jobs:
       contents: read
 
     steps:
-      - name: Checkout repository
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.6.0  # Update to match your Terraform version
+          terraform_version: 1.6.0  # Ensure this matches your Terraform version
 
       - name: Terraform Init
         run: terraform init
         working-directory: terraform/environments/dev
 
-      - name: Terraform Format
+      - name: Terraform Format Check
         run: terraform fmt -check
         working-directory: terraform/environments/dev
 
       - name: Terraform Plan
-        run: terraform plan -out=tfplan
+        run: terraform plan -out=tfplan -var="environment=dev" -var="project=CIRCU-LI-ION" -var="customer_ip=${{ secrets.CUSTOMER_IP }}"
         working-directory: terraform/environments/dev
 
       - name: Terraform Apply
         if: github.ref == 'refs/heads/main'
-        run: terraform apply -auto-approve
+        run: terraform apply -auto-approve -var="environment=dev" -var="project=CIRCU-LI-ION" -var="customer_ip=${{ secrets.CUSTOMER_IP }}"
         working-directory: terraform/environments/dev
 
