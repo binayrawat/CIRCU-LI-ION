@@ -12,8 +12,9 @@
 terraform/environments/dev/.terraform/
 terraform/modules/storage/.terraform/
 
-# Ignore Node.js dependencies (if applicable)
-node_modules/
+# Ignore AWS Cred
+*.pem
+*.key
 
 # Ignore system files
 .DS_Store
