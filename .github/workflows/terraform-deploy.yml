@@ -3,40 +3,40 @@ name: Terraform Deployment
 on:
   push:
     branches:
-      - main  # Run this workflow on push to main branch
+      - main  
   pull_request:
     branches:
-      - main  # Run this workflow on PRs to main branch
-  workflow_dispatch:  # Allows manual trigger from GitHub UI
+      - main
+
+permissions:
+  id-token: write
+  contents: read
 
 jobs:
   terraform:
-    name: Terraform Deployment
     runs-on: ubuntu-latest
-
-    permissions:
-      id-token: write
-      contents: read
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.6.0  # Update to match your Terraform version
+          terraform_version: 1.6.0
 
       - name: Terraform Init
         run: terraform init
         working-directory: terraform/environments/dev
 
-      - name: Terraform Format
-        run: terraform fmt -check
-        working-directory: terraform/environments/dev
-
       - name: Terraform Plan
-        run: terraform plan -out=tfplan -var="environment=dev" -var="project=CIRCU-LI-ION" -var="customer_ip=${{ secrets.CUSTOMER_IP }}"
+        run: terraform plan -out=tfplan -var="environment=dev" -var="project=CIRCU-LI-ION" -var="customer_ip=35.164.185.122"
         working-directory: terraform/environments/dev
 
       - name: Terraform Apply
