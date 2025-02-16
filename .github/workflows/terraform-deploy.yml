@@ -39,6 +39,14 @@ jobs:
         run: terraform refresh -var="environment=dev" -var="project=CIRCU-LI-ION" -var="customer_ip=35.164.185.122"
         working-directory: terraform/environments/dev
 
+      - name: Import Existing AWS Resources (if needed)
+        run: |
+          terraform import module.processing.aws_iam_role.lambda_role recipe_processor_role_dev || true
+          terraform import module.processing.aws_cloudwatch_log_group.lambda_logs /aws/lambda/CIRCU-LI-ION-recipe-processor || true
+          terraform import module.storage.aws_s3_bucket.recipe_storage recipe-storage-dev || true
+          terraform import module.storage.aws_iam_user.customer recipe-customer-dev || true
+        working-directory: terraform/environments/dev
+
       - name: Terraform Plan
         run: terraform plan -out=tfplan -var="environment=dev" -var="project=CIRCU-LI-ION" -var="customer_ip=35.164.185.122"
         working-directory: terraform/environments/dev
