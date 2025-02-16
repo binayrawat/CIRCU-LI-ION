@@ -7,6 +7,7 @@ module "storage" {
   source      = "../../modules/storage"
   environment = var.environment
   project     = var.project
+  customer_ip = var.customer_ip
 }
 
 # Processing Module

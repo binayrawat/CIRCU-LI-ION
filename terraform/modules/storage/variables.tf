@@ -12,3 +12,9 @@ variable "project" {
   type        = string
   default     = "CIRCU-LI-ION"
 }
+
+variable "customer_ip" {
+  description = "Customer's IP address"
+  type        = string
+}
+

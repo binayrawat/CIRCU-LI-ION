@@ -116,4 +116,9 @@ resource "aws_cloudwatch_metric_alarm" "lambda_errors" {
   threshold          = "0"
   alarm_description  = "Lambda function error rate"
   alarm_actions      = [aws_sns_topic.alerts.arn]
-} 
+}
+
+resource "aws_sns_topic" "alerts" {
+  name = "lambda-alerts-${var.environment}"
+}
+
