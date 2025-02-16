@@ -1,0 +1,21 @@
+# Ignore Terraform state files and backups
+*.tfstate
+*.tfstate.backup
+
+# Ignore Terraform lock file
+.terraform.lock.hcl
+
+# Ignore Terraform cache and provider files
+.terraform/
+
+# Ignore local environment-specific Terraform files
+terraform/environments/dev/.terraform/
+terraform/modules/storage/.terraform/
+
+# Ignore Node.js dependencies (if applicable)
+node_modules/
+
+# Ignore system files
+.DS_Store
+Thumbs.db
+
