@@ -1,4 +1,4 @@
-# Hey! Let's Get This Robot Recipe Manager Running! 🚀
+# Let's Get This Robot Recipe Manager Running!
 
 ## First Things First (Super Easy!)
 
@@ -14,13 +14,13 @@
 
 2. **Package Up Our Robot's Brain:**
    ```bash
-   # Let's go where the magic happens
+   # Let's go
    cd terraform/src/lambda_function
    
    # Get all the parts we need
    npm install    # Like grocery shopping for our robot
    
-   # Pack it all up nice and neat
+   # Pack it all up nice
    zip -r ../lambda_function.zip .    # Like making a sandwich for later!
    ```
 
@@ -36,7 +36,7 @@
    terraform apply   # Like pressing the "Make Magic" button
    ```
 
-## What We're Building (The Cool Stuff)
+## What We're Building
 - A safe place for our recipes (S3 - like a digital cookbook)
 - A smart helper (Lambda - our robot's brain)
 - A fast delivery system (CloudFront - like having a super-fast courier)
