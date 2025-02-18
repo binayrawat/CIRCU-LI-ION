@@ -1,7 +1,7 @@
 name: Terraform Destroy
 
 on:
-  workflow_dispatch:  # Allows manual trigger from GitHub Actions UI
+  workflow_dispatch:  # Allows manual execution
 
 permissions:
   id-token: write
@@ -31,6 +31,6 @@ jobs:
         working-directory: terraform/environments/dev
 
       - name: Terraform Destroy
-        run: terraform destroy -auto-approve -var="environment=dev" -var="project=CIRCU-LI-ION" -var="customer_ip=35.164.185.122"
+        run: terraform destroy -auto-approve -var="environment=dev" -var="project=CIRCU-LI-ION"
         working-directory: terraform/environments/dev
 
