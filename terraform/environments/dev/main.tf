@@ -18,7 +18,6 @@ module "processing" {
   environment         = var.environment
   project            = var.project
   bucket_name        = module.storage.bucket_name
-  bucket_arn         = module.storage.bucket_arn
   lambda_zip_path    = var.lambda_zip_path
 }
 
