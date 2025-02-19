@@ -84,7 +84,7 @@ resource "aws_s3_bucket_notification" "bucket_notification" {
   bucket = var.bucket_name
 
   lambda_function {
-    lambda_function_arn = var.lambda_function_arn
+    lambda_function_arn = aws_lambda_function.recipe_processor.arn
     events              = ["s3:ObjectCreated:*"]
   }
 }
@@ -97,7 +97,6 @@ resource "aws_lambda_permission" "allow_s3" {
   principal     = "s3.amazonaws.com"
   source_arn    = var.bucket_arn
 }
-
 
 # Finally, we give S3 permission to wake up our Lambda
 # Like giving the bell permission to wake up our robot chef
