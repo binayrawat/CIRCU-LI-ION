@@ -13,10 +13,11 @@ module "storage" {
 # Processing Module
 module "processing" {
   source              = "../../modules/processing"
-  lambda_function_arn = aws_lambda_function.recipe_processor.arn  # Reference the function directly
+  lambda_function_arn = aws_lambda_function.recipe_processor.arn
   environment         = var.environment
   project            = var.project
   bucket_name        = module.storage.bucket_name
+  bucket_arn         = module.storage.bucket_arn
   lambda_zip_path    = var.lambda_zip_path
 }
 
