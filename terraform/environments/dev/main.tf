@@ -11,15 +11,17 @@ module "storage" {
 }
 
 # Processing Module
+# Processing Module
 module "processing" {
-  source          = "../../modules/processing"
-  lambda_function_arn = module.processing.lambda_function_arn 
-  environment     = var.environment
-  project         = var.project
-  bucket_name     = module.storage.bucket_name
-  bucket_arn      = module.storage.bucket_arn
-  lambda_zip_path = var.lambda_zip_path
+  source              = "../../modules/processing"
+  lambda_function_arn = module.lambda.lambda_function_arn  # 🔹 Use the correct module reference
+  environment         = var.environment
+  project            = var.project
+  bucket_name        = module.storage.bucket_name
+  bucket_arn         = module.storage.bucket_arn
+  lambda_zip_path    = var.lambda_zip_path
 }
+
 
 # Distribution Module
 module "distribution" {
