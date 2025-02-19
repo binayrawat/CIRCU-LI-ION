@@ -13,6 +13,7 @@ module "storage" {
 # Processing Module
 module "processing" {
   source          = "../../modules/processing"
+  lambda_function_arn = module.processing.lambda_function_arn 
   environment     = var.environment
   project         = var.project
   bucket_name     = module.storage.bucket_name
