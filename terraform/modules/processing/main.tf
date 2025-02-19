@@ -95,7 +95,7 @@ resource "aws_lambda_permission" "allow_s3" {
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.recipe_processor.function_name
   principal     = "s3.amazonaws.com"
-  source_arn    = aws_s3_bucket.recipe_storage.arn
+  source_arn    = var.bucket_arn
 }
 
 
@@ -113,6 +113,11 @@ resource "aws_lambda_permission" "allow_bucket" {
 resource "aws_cloudwatch_log_group" "lambda_logs" {
   name              = "/aws/lambda/${var.project}-recipe-processor"
   retention_in_days = 14
+  
+  tags = {
+    Environment = var.environment
+    Project     = var.project
+  }
 }
 
 resource "aws_cloudwatch_metric_alarm" "lambda_errors" {

@@ -13,7 +13,3 @@ output "lambda_role_arn" {
   value       = aws_iam_role.lambda_role.arn
 }
 
-output "bucket_arn" {
-  value = aws_s3_bucket.recipe_storage.arn
-}
-

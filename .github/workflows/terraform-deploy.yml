@@ -31,6 +31,12 @@ jobs:
         with:
           terraform_version: 1.6.0
 
+      - name: Prepare Lambda Function
+        run: |
+          cd terraform/src/lambda_function
+          npm install
+          zip -r ../lambda_function.zip .
+
       - name: Terraform Init
         run: terraform init
         working-directory: terraform/environments/dev

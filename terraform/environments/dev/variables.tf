@@ -19,7 +19,7 @@ variable "project" {
 variable "lambda_zip_path" {
   description = "Path to the Lambda function ZIP file"
   type        = string
-  default     = "../../src/lambda_function.zip"
+  default     = "../../src/lambda_function/lambda_function.zip"
 }
 
 variable "customer_ip" {
