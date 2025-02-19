@@ -11,7 +11,6 @@ module "storage" {
 }
 
 # Processing Module
-# Processing Module
 module "processing" {
   source              = "../../modules/processing"
   lambda_function_arn = module.lambda.lambda_function_arn  # 🔹 Use the correct module reference
@@ -21,7 +20,6 @@ module "processing" {
   lambda_zip_path    = var.lambda_zip_path
 }
 
-
 # Distribution Module
 module "distribution" {
   source             = "../../modules/distribution"
@@ -30,9 +28,6 @@ module "distribution" {
   bucket_name        = module.storage.bucket_name
   bucket_arn         = module.storage.bucket_arn
   bucket_domain_name = module.storage.bucket_domain_name
-}
-
-  bucket_arn          = module.storage.bucket_arn
 }
 
 # VPN Module (Commented for initial deployment)
@@ -45,3 +40,4 @@ module "network" {
   customer_cidr = var.customer_cidr
 }
 */
+
