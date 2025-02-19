@@ -81,7 +81,7 @@ resource "aws_lambda_function" "recipe_processor" {
 # This tells S3 to notify our Lambda when new recipes arrive
 # Like a bell that rings when someone drops off a new recipe
 resource "aws_s3_bucket_notification" "bucket_notification" {
-  bucket = aws_s3_bucket.recipe_storage.id
+  bucket = var.bucket_name
 
   lambda_function {
     lambda_function_arn = var.lambda_function_arn
