@@ -14,17 +14,19 @@ variable "bucket_name" {
   type        = string
 }
 
+variable "bucket_arn" {
+  description = "ARN of the S3 bucket"
+  type        = string
+}
+
 variable "lambda_zip_path" {
-  default = "../../src/lambda_function/lambda_function.zip"
+  description = "Path to the Lambda function ZIP file"
+  type        = string
+  default     = "../../src/lambda_function/lambda_function.zip"
 }
 
 variable "lambda_function_arn" {
   description = "ARN of the Lambda function for processing S3 events"
-  type        = string
-}
-
-variable "bucket_arn" {
-  description = "ARN of the S3 bucket"
   type        = string
 }
 
