@@ -35,8 +35,8 @@ resource "aws_iam_role_policy" "lambda_policy" {
           "s3:ListBucket"
         ]
         Resource = [
-          var.bucket_arn,
-          "${var.bucket_arn}/*"
+          module.storage.bucket_arn,
+          "${module.storage.bucket_arn}/*"
         ]
       },
       {
@@ -106,7 +106,7 @@ resource "aws_lambda_permission" "allow_bucket" {
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.recipe_processor.function_name
   principal     = "s3.amazonaws.com"
-  source_arn    = var.bucket_arn
+  source_arn    = module.storage.bucket_arn
 }
 
 # Add CloudWatch configuration
