@@ -14,11 +14,6 @@ variable "bucket_name" {
   type        = string
 }
 
-variable "bucket_arn" {
-  description = "ARN of the S3 bucket"
-  type        = string
-}
-
 variable "lambda_zip_path" {
   default = "../../src/lambda_function/lambda_function.zip"
 }
