@@ -25,8 +25,3 @@ variable "lambda_zip_path" {
   default     = "../../src/lambda_function/lambda_function.zip"
 }
 
-variable "lambda_function_arn" {
-  description = "ARN of the Lambda function for processing S3 events"
-  type        = string
-}
-
