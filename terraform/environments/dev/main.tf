@@ -33,18 +33,6 @@ module "distribution" {
   bucket_domain_name = module.storage.bucket_domain_name
 }
 
-module "lambda" {
-  source          = "../../modules/lambda"
-  environment     = var.environment
-  lambda_zip_path = var.lambda_zip_path
-}
-
-module "processing" {
-  source              = "../../modules/processing"
-  lambda_function_arn = module.lambda.lambda_function_arn
-  environment         = var.environment
-  project             = var.project
-  bucket_name         = module.storage.bucket_name
   bucket_arn          = module.storage.bucket_arn
 }
 
