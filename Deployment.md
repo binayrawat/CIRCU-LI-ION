@@ -1,79 +1,110 @@
-# Let's Get This Robot Recipe Manager Running!
+# VPN Setup Guide
 
-## First Things First (Super Easy!)
+## Basic Overview
+A VPN (Virtual Private Network) connection between your office and AWS cloud:
+- Creates a secure connection to AWS
+- Allows private access to cloud resources
+- Helps meet security requirements
 
-1. **Get Your Tools Ready:**
+## Simple Setup Steps
+
+1. **Gather Information:**
    ```bash
-   # First, let's set up AWS (like setting up your phone)
-   aws configure    # Just follow the prompts, super simple!
-
-   # You'll also need:
-   # - Terraform (it's like Lego for the cloud!)
-   # - Node.js (our robot's favorite language)
+   # You'll need:
+   - Your office IP address
+   - Your network range
+   - AWS region
    ```
 
-2. **Package Up Our Robot's Brain:**
-   ```bash
-   # Let's go
-   cd terraform/src/lambda_function
-   
-   # Get all the parts we need
-   npm install    # Like grocery shopping for our robot
-   
-   # Pack it all up nice
-   zip -r ../lambda_function.zip .    # Like making a sandwich for later!
-   ```
-
-3. **Build Our Robot's Home:**
-   ```bash
-   # Go to where we're building
-   cd ../../environments/dev
-   
-   # Get our building plans ready
-   terraform init    # Like reading the instruction manual
-   
-   # Build it! (This is the fun part)
-   terraform apply   # Like pressing the "Make Magic" button
-   ```
-
-## What We're Building
-- A safe place for our recipes (S3 - like a digital cookbook)
-- A smart helper (Lambda - our robot's brain)
-- A fast delivery system (CloudFront - like having a super-fast courier)
-
-## About That VPN Thing (Our Secret Tunnel)
-Right now it's turned off to keep things simple, but when you need it:
-
-1. Just uncomment the special code in `terraform/environments/dev/main.tf`
-2. Make a new file with your secret handshake:
+2. **Update Configuration:**
    ```hcl
-   customer_ip   = "YOUR_OFFICE_IP"    # Like your building's address
-   customer_cidr = "YOUR_NETWORK"       # Like your neighborhood
+   # In main.tf, remove the /* */ to enable:
+   module "network" {
+     source        = "../../modules/network"
+     environment   = var.environment
+     project       = var.project
+     customer_ip   = var.customer_ip    
+     customer_cidr = var.customer_cidr   
+   }
    ```
-3. Press the magic button again: `terraform apply`
 
-## Let's Test It Out!
-
-1. **Try Storing Something:**
+3. **Add Your Details:**
    ```bash
-   # Let's make a test note
-   echo "test" > test.txt
-   
-   # Send it to our digital cookbook
-   aws s3 cp test.txt s3://recipe-storage-dev/   # Like putting a recipe in the box
+   # Create a new file named terraform.tfvars:
+   customer_ip   = "203.0.113.1"        # Your office IP
+   customer_cidr = "192.168.0.0/16"     # Your network range
    ```
 
-2. **See If Our Robot's Thinking:**
+4. **Run the Setup:**
    ```bash
-   # Check what our robot's doing
-   aws logs tail /aws/lambda/recipe_processor_dev   # Like reading its diary
+   terraform apply
    ```
 
-## When You're Done Playing
+## Main Components
+1. VPC - Your private network in AWS
+2. VPN Gateway - The AWS side of the connection
+3. Customer Gateway - Your office side of the connection
+4. Security Groups - Network security rules
 
-(We'll add cleanup instructions here - like knowing how to clean up after cooking!)
+## Basic Monitoring
+Check if everything is working:
+```bash
+# Check VPN status
+aws ec2 describe-vpn-connections
 
-## Good to Know 
-- We can add that secret tunnel (VPN) anytime
-- Everything's super secure (like a digital fortress!)
-- We can see everything that's happening (like having security cameras)
+# Check if you can reach AWS
+ping <private-ip>
+```
+
+## Common Problems and Fixes
+1. Can't Connect:
+   - Check your IP address is correct
+   - Verify security groups
+   - Ensure network range is correct
+
+2. Connection Drops:
+   - Check both VPN tunnels
+   - Verify network settings
+   - Review security rules
+
+## Costs
+Three main costs:
+1. VPN connection (hourly rate)
+2. Data transfer
+3. VPN Gateway (free)
+
+Finally, deployment is straightforward:
+1. Simple setup steps
+2. VPN configuration
+3. Monitoring included
+
+## Version Control Workflow
+
+1. Clone repository:
+```bash
+git clone https://github.com/your-org/CIRCU-LI-ION.git
+cd CIRCU-LI-ION
+```
+
+2. Create feature branch:
+```bash
+git checkout -b feature/your-feature
+```
+
+3. Make changes and commit:
+```bash
+git add .
+git commit -m "feat(scope): description"
+```
+
+4. Push and create PR:
+```bash
+git push origin feature/your-feature
+# Create PR through GitHub interface
+```
+
+5. Review Process:
+- Code review required
+- Tests must pass
+- Documentation updated
+- Security reviewed
