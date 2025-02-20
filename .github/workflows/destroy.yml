@@ -24,7 +24,7 @@ jobs:
           cd terraform/environments/dev
           terraform init
 
-      - name: Empty S3 Bucket
+      - name: Empty S3 Bucket First
         run: |
           aws s3 rm s3://circu-li-ion-recipe-storage-dev --recursive || true
 
