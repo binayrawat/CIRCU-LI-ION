@@ -26,17 +26,29 @@ jobs:
 
       - name: Clean Up CloudFront
         run: |
-          # First disable distributions
-          for DIST_ID in E7B71H3JZDHLH E1R89VII6SDI4C; do
-            # Get current config and etag
-            aws cloudfront get-distribution-config --id $DIST_ID > temp.json
-            ETAG=$(jq -r '.ETag' temp.json)
+          # Function to disable distribution
+          disable_distribution() {
+            local DIST_ID=$1
             
-            # Extract and modify DistributionConfig
-            jq '.DistributionConfig.Enabled = false | .DistributionConfig' temp.json > config.json
+            # Get current config
+            local CONFIG=$(aws cloudfront get-distribution-config --id $DIST_ID)
+            local ETAG=$(echo "$CONFIG" | jq -r '.ETag')
+            local DIST_CONFIG=$(echo "$CONFIG" | jq -r '.DistributionConfig')
+            
+            # Create new config with Enabled=false
+            echo "$DIST_CONFIG" | jq '.Enabled = false' > config.json
             
             # Update distribution
-            aws cloudfront update-distribution --id $DIST_ID --if-match "$ETAG" --distribution-config file://config.json || true
+            aws cloudfront update-distribution \
+              --id $DIST_ID \
+              --if-match "$ETAG" \
+              --distribution-config file://config.json
+          }
+          
+          # Disable each distribution
+          for DIST_ID in E7B71H3JZDHLH E1R89VII6SDI4C; do
+            echo "Disabling distribution $DIST_ID..."
+            disable_distribution $DIST_ID || true
             sleep 30
           done
 
@@ -73,24 +85,33 @@ jobs:
 
       - name: Delete CloudFront
         run: |
-          for DIST_ID in E7B71H3JZDHLH E1R89VII6SDI4C; do
-            ETAG=$(aws cloudfront get-distribution --id $DIST_ID --query 'Distribution.ETag' --output text || true)
+          # Function to delete distribution
+          delete_distribution() {
+            local DIST_ID=$1
+            local ETAG=$(aws cloudfront get-distribution --id $DIST_ID --query 'Distribution.ETag' --output text 2>/dev/null)
+            
             if [ ! -z "$ETAG" ]; then
-              aws cloudfront delete-distribution --id $DIST_ID --if-match "$ETAG" || true
+              aws cloudfront delete-distribution --id $DIST_ID --if-match "$ETAG"
             fi
+          }
+          
+          # Delete each distribution
+          for DIST_ID in E7B71H3JZDHLH E1R89VII6SDI4C; do
+            echo "Deleting distribution $DIST_ID..."
+            delete_distribution $DIST_ID || true
           done
 
       - name: Final Resource Cleanup
         run: |
-          # Delete any remaining Lambda functions
+          # Delete Lambda functions
           aws lambda delete-function --function-name recipe_processor_dev || true
           
-          # Delete any remaining S3 buckets
+          # Delete S3 buckets
           aws s3 rb s3://recipe-storage-dev --force || true
           
-          # Delete any remaining CloudFront Origin Access Identities
+          # Delete CloudFront Origin Access Identities
           for OAI in E3J41MD19IG6S E3JVHJN7DHO9I2; do
-            ETAG=$(aws cloudfront get-cloud-front-origin-access-identity --id $OAI --query 'ETag' --output text || true)
+            ETAG=$(aws cloudfront get-cloud-front-origin-access-identity --id $OAI --query 'ETag' --output text 2>/dev/null)
             if [ ! -z "$ETAG" ]; then
               aws cloudfront delete-cloud-front-origin-access-identity --id $OAI --if-match "$ETAG" || true
             fi
