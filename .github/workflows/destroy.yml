@@ -24,33 +24,89 @@ jobs:
           cd terraform/environments/dev
           terraform init
 
-      - name: Clean Up CloudFront
+      - name: Get CloudFront Resources
+        id: get-resources
         run: |
-          # Function to disable distribution
-          disable_distribution() {
-            local DIST_ID=$1
+          # Get all distribution IDs
+          DIST_IDS=$(aws cloudfront list-distributions --query 'DistributionList.Items[*].Id' --output text)
+          echo "DIST_IDS=$DIST_IDS" >> $GITHUB_ENV
+          
+          # Get all OAI IDs
+          OAI_IDS=$(aws cloudfront list-cloud-front-origin-access-identities --query 'CloudFrontOriginAccessIdentityList.Items[*].Id' --output text)
+          echo "OAI_IDS=$OAI_IDS" >> $GITHUB_ENV
+          
+          echo "Found distributions: $DIST_IDS"
+          echo "Found OAIs: $OAI_IDS"
+
+      - name: Disable CloudFront Distributions
+        run: |
+          for DIST_ID in $DIST_IDS; do
+            echo "Working on distribution $DIST_ID"
             
-            # Get current config
-            local CONFIG=$(aws cloudfront get-distribution-config --id $DIST_ID)
-            local ETAG=$(echo "$CONFIG" | jq -r '.ETag')
-            local DIST_CONFIG=$(echo "$CONFIG" | jq -r '.DistributionConfig')
+            # Get current config and ETag
+            DIST_CONFIG=$(aws cloudfront get-distribution-config --id $DIST_ID)
+            ETAG=$(echo "$DIST_CONFIG" | jq -r '.ETag')
             
             # Create new config with Enabled=false
-            echo "$DIST_CONFIG" | jq '.Enabled = false' > config.json
+            echo "$DIST_CONFIG" | jq '.DistributionConfig.Enabled = false | .DistributionConfig' > config.json
             
             # Update distribution
             aws cloudfront update-distribution \
               --id $DIST_ID \
-              --if-match "$ETAG" \
-              --distribution-config file://config.json
-          }
-          
-          # Disable each distribution
-          for DIST_ID in E7B71H3JZDHLH E1R89VII6SDI4C; do
-            echo "Disabling distribution $DIST_ID..."
-            disable_distribution $DIST_ID || true
-            sleep 30
+              --distribution-config file://config.json \
+              --if-match "$ETAG" || echo "Failed to disable $DIST_ID"
           done
+
+      - name: Wait for Distributions to be Deployed
+        run: |
+          for DIST_ID in $DIST_IDS; do
+            echo "Waiting for distribution $DIST_ID to be deployed..."
+            
+            while true; do
+              STATUS=$(aws cloudfront get-distribution --id $DIST_ID --query 'Distribution.Status' --output text)
+              echo "Current status of $DIST_ID: $STATUS"
+              if [ "$STATUS" = "Deployed" ]; then
+                break
+              fi
+              sleep 30
+            done
+          done
+
+      - name: Delete CloudFront Distributions
+        run: |
+          for DIST_ID in $DIST_IDS; do
+            echo "Deleting distribution $DIST_ID"
+            
+            # Get current ETag
+            ETAG=$(aws cloudfront get-distribution --id $DIST_ID --query 'Distribution.ETag' --output text)
+            
+            # Delete distribution
+            aws cloudfront delete-distribution \
+              --id $DIST_ID \
+              --if-match "$ETAG" || echo "Failed to delete $DIST_ID"
+          done
+
+      - name: Delete Origin Access Identities
+        run: |
+          for OAI_ID in $OAI_IDS; do
+            echo "Deleting OAI $OAI_ID"
+            
+            # Get current ETag
+            ETAG=$(aws cloudfront get-cloud-front-origin-access-identity --id $OAI_ID --query 'ETag' --output text)
+            
+            # Delete OAI
+            aws cloudfront delete-cloud-front-origin-access-identity \
+              --id $OAI_ID \
+              --if-match "$ETAG" || echo "Failed to delete OAI $OAI_ID"
+          done
+
+      - name: Verify Cleanup
+        run: |
+          echo "Checking remaining CloudFront distributions..."
+          aws cloudfront list-distributions --query 'DistributionList.Items[*].[Id,Status,Enabled]' --output table || echo "No distributions found"
+          
+          echo "Checking remaining OAIs..."
+          aws cloudfront list-cloud-front-origin-access-identities --query 'CloudFrontOriginAccessIdentityList.Items[*].[Id]' --output table || echo "No OAIs found"
 
       - name: Clean Up IAM
         run: |
