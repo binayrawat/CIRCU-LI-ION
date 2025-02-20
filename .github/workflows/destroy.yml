@@ -24,44 +24,64 @@ jobs:
           cd terraform/environments/dev
           terraform init
 
-      - name: Get CloudFront Resources
-        id: get-resources
+      - name: Check All Resources
+        id: check-resources
         run: |
-          # Get all distribution IDs
-          DIST_IDS=$(aws cloudfront list-distributions --query 'DistributionList.Items[*].Id' --output text)
-          echo "DIST_IDS=$DIST_IDS" >> $GITHUB_ENV
+          echo "Checking CloudFront distributions..."
+          DIST_COUNT=$(aws cloudfront list-distributions --query 'length(DistributionList.Items)' --output text || echo "0")
+          if [ "$DIST_COUNT" = "0" ]; then
+            echo "✅ No CloudFront distributions found"
+          else
+            DIST_IDS=$(aws cloudfront list-distributions --query 'DistributionList.Items[*].Id' --output text)
+            echo "Found distributions: $DIST_IDS"
+            echo "DIST_IDS=$DIST_IDS" >> $GITHUB_ENV
+          fi
           
-          # Get all OAI IDs
-          OAI_IDS=$(aws cloudfront list-cloud-front-origin-access-identities --query 'CloudFrontOriginAccessIdentityList.Items[*].Id' --output text)
-          echo "OAI_IDS=$OAI_IDS" >> $GITHUB_ENV
+          echo "Checking Origin Access Identities..."
+          OAI_COUNT=$(aws cloudfront list-cloud-front-origin-access-identities --query 'length(CloudFrontOriginAccessIdentityList.Items)' --output text || echo "0")
+          if [ "$OAI_COUNT" = "0" ]; then
+            echo "✅ No Origin Access Identities found"
+          else
+            OAI_IDS=$(aws cloudfront list-cloud-front-origin-access-identities --query 'CloudFrontOriginAccessIdentityList.Items[*].Id' --output text)
+            echo "Found OAIs: $OAI_IDS"
+            echo "OAI_IDS=$OAI_IDS" >> $GITHUB_ENV
+          fi
           
-          echo "Found distributions: $DIST_IDS"
-          echo "Found OAIs: $OAI_IDS"
+          echo "Checking Lambda functions..."
+          if aws lambda get-function --function-name recipe_processor_dev 2>/dev/null; then
+            echo "Found Lambda function: recipe_processor_dev"
+            echo "LAMBDA_EXISTS=true" >> $GITHUB_ENV
+          else
+            echo "✅ No Lambda function found"
+          fi
+          
+          echo "Checking S3 buckets..."
+          if aws s3api head-bucket --bucket recipe-storage-dev 2>/dev/null; then
+            echo "Found S3 bucket: recipe-storage-dev"
+            echo "BUCKET_EXISTS=true" >> $GITHUB_ENV
+          else
+            echo "✅ No S3 bucket found"
+          fi
 
       - name: Disable CloudFront Distributions
+        if: env.DIST_IDS != ''
         run: |
           for DIST_ID in $DIST_IDS; do
             echo "Working on distribution $DIST_ID"
-            
-            # Get current config and ETag
             DIST_CONFIG=$(aws cloudfront get-distribution-config --id $DIST_ID)
             ETAG=$(echo "$DIST_CONFIG" | jq -r '.ETag')
-            
-            # Create new config with Enabled=false
             echo "$DIST_CONFIG" | jq '.DistributionConfig.Enabled = false | .DistributionConfig' > config.json
-            
-            # Update distribution
             aws cloudfront update-distribution \
               --id $DIST_ID \
               --distribution-config file://config.json \
               --if-match "$ETAG" || echo "Failed to disable $DIST_ID"
           done
 
-      - name: Wait for Distributions to be Deployed
+      - name: Wait for Distributions
+        if: env.DIST_IDS != ''
         run: |
           for DIST_ID in $DIST_IDS; do
             echo "Waiting for distribution $DIST_ID to be deployed..."
-            
             while true; do
               STATUS=$(aws cloudfront get-distribution --id $DIST_ID --query 'Distribution.Status' --output text)
               echo "Current status of $DIST_ID: $STATUS"
@@ -73,102 +93,60 @@ jobs:
           done
 
       - name: Delete CloudFront Distributions
+        if: env.DIST_IDS != ''
         run: |
           for DIST_ID in $DIST_IDS; do
             echo "Deleting distribution $DIST_ID"
-            
-            # Get current ETag
             ETAG=$(aws cloudfront get-distribution --id $DIST_ID --query 'Distribution.ETag' --output text)
-            
-            # Delete distribution
             aws cloudfront delete-distribution \
               --id $DIST_ID \
               --if-match "$ETAG" || echo "Failed to delete $DIST_ID"
           done
 
       - name: Delete Origin Access Identities
+        if: env.OAI_IDS != ''
         run: |
           for OAI_ID in $OAI_IDS; do
             echo "Deleting OAI $OAI_ID"
-            
-            # Get current ETag
             ETAG=$(aws cloudfront get-cloud-front-origin-access-identity --id $OAI_ID --query 'ETag' --output text)
-            
-            # Delete OAI
             aws cloudfront delete-cloud-front-origin-access-identity \
               --id $OAI_ID \
               --if-match "$ETAG" || echo "Failed to delete OAI $OAI_ID"
           done
 
-      - name: Verify Cleanup
+      - name: Clean Up Lambda
+        if: env.LAMBDA_EXISTS == 'true'
         run: |
-          echo "Checking remaining CloudFront distributions..."
-          aws cloudfront list-distributions --query 'DistributionList.Items[*].[Id,Status,Enabled]' --output table || echo "No distributions found"
-          
-          echo "Checking remaining OAIs..."
-          aws cloudfront list-cloud-front-origin-access-identities --query 'CloudFrontOriginAccessIdentityList.Items[*].[Id]' --output table || echo "No OAIs found"
+          echo "Deleting Lambda function..."
+          aws lambda delete-function --function-name recipe_processor_dev
 
-      - name: Clean Up IAM
+      - name: Clean Up S3
+        if: env.BUCKET_EXISTS == 'true'
         run: |
-          # Delete IAM user policies
-          aws iam list-user-policies --user-name recipe-customer-dev | jq -r '.PolicyNames[]' | while read policy; do
-            aws iam delete-user-policy --user-name recipe-customer-dev --policy-name "$policy"
-          done
-          
-          # Delete IAM user
-          aws iam delete-user --user-name recipe-customer-dev || true
+          echo "Emptying and deleting S3 bucket..."
+          aws s3 rm s3://recipe-storage-dev --recursive
+          aws s3api delete-bucket --bucket recipe-storage-dev
 
-      - name: Clean Up CloudWatch
+      - name: Final Verification
         run: |
-          # Delete CloudWatch Log Groups
-          aws logs delete-log-group --log-group-name /aws/lambda/recipe_processor_dev || true
+          echo "=== Final Resource Check ==="
           
-          # Delete CloudWatch Alarms
-          aws cloudwatch delete-alarms --alarm-names CIRCU-LI-ION-lambda-errors || true
-
-      - name: Clean Up SNS
-        run: |
-          # Delete SNS topics
-          TOPIC_ARN=$(aws sns list-topics --query 'Topics[?contains(TopicArn,`lambda-alerts-dev`)].[TopicArn]' --output text)
-          if [ ! -z "$TOPIC_ARN" ]; then
-            aws sns delete-topic --topic-arn "$TOPIC_ARN"
+          echo "CloudFront distributions:"
+          if [ "$(aws cloudfront list-distributions --query 'length(DistributionList.Items)' --output text)" = "0" ]; then
+            echo "✅ No distributions remain"
           fi
-
-      - name: Wait for CloudFront
-        run: |
-          echo "Waiting for CloudFront distributions to be disabled..."
-          sleep 300  # Wait 5 minutes
-
-      - name: Delete CloudFront
-        run: |
-          # Function to delete distribution
-          delete_distribution() {
-            local DIST_ID=$1
-            local ETAG=$(aws cloudfront get-distribution --id $DIST_ID --query 'Distribution.ETag' --output text 2>/dev/null)
-            
-            if [ ! -z "$ETAG" ]; then
-              aws cloudfront delete-distribution --id $DIST_ID --if-match "$ETAG"
-            fi
-          }
           
-          # Delete each distribution
-          for DIST_ID in E7B71H3JZDHLH E1R89VII6SDI4C; do
-            echo "Deleting distribution $DIST_ID..."
-            delete_distribution $DIST_ID || true
-          done
-
-      - name: Final Resource Cleanup
-        run: |
-          # Delete Lambda functions
-          aws lambda delete-function --function-name recipe_processor_dev || true
+          echo "Origin Access Identities:"
+          if [ "$(aws cloudfront list-cloud-front-origin-access-identities --query 'length(CloudFrontOriginAccessIdentityList.Items)' --output text)" = "0" ]; then
+            echo "✅ No OAIs remain"
+          fi
           
-          # Delete S3 buckets
-          aws s3 rb s3://recipe-storage-dev --force || true
+          echo "Lambda functions:"
+          if ! aws lambda get-function --function-name recipe_processor_dev 2>/dev/null; then
+            echo "✅ No Lambda function remains"
+          fi
           
-          # Delete CloudFront Origin Access Identities
-          for OAI in E3J41MD19IG6S E3JVHJN7DHO9I2; do
-            ETAG=$(aws cloudfront get-cloud-front-origin-access-identity --id $OAI --query 'ETag' --output text 2>/dev/null)
-            if [ ! -z "$ETAG" ]; then
-              aws cloudfront delete-cloud-front-origin-access-identity --id $OAI --if-match "$ETAG" || true
-            fi
-          done
+          echo "S3 buckets:"
+          if ! aws s3api head-bucket --bucket recipe-storage-dev 2>/dev/null; then
+            echo "✅ No S3 bucket remains"
+          fi
