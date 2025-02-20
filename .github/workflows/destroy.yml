@@ -24,52 +24,60 @@ jobs:
           cd terraform/environments/dev
           terraform init
 
-      - name: Clean Up Resources
+      - name: Clean Up CloudFront
         run: |
-          cd terraform/environments/dev
+          # First disable distributions
+          for DIST_ID in E7B71H3JZDHLH E1R89VII6SDI4C; do
+            aws cloudfront get-distribution-config --id $DIST_ID > config.json
+            ETAG=$(aws cloudfront get-distribution-config --id $DIST_ID --query 'ETag' --output text)
+            jq '.DistributionConfig.Enabled = false' config.json > new_config.json
+            aws cloudfront update-distribution --id $DIST_ID --if-match "$ETAG" --distribution-config file://new_config.json
+            sleep 30
+          done
+
+      - name: Clean Up IAM
+        run: |
+          # Delete IAM user policies
+          aws iam list-user-policies --user-name recipe-customer-dev | jq -r '.PolicyNames[]' | while read policy; do
+            aws iam delete-user-policy --user-name recipe-customer-dev --policy-name "$policy"
+          done
           
-          # Empty S3 bucket first
-          aws s3 rm s3://recipe-storage-dev --recursive || true
+          # Delete IAM user
+          aws iam delete-user --user-name recipe-customer-dev || true
+
+      - name: Clean Up CloudWatch
+        run: |
+          # Delete CloudWatch Log Groups
+          aws logs delete-log-group --log-group-name /aws/lambda/recipe_processor_dev || true
           
-          # Disable all CloudFront distributions
-          for DIST_ID in E1R89VII6SDI4C E7B71H3JZDHLH; do
-            CONFIG=$(aws cloudfront get-distribution --id $DIST_ID --query 'Distribution.DistributionConfig')
+          # Delete CloudWatch Alarms
+          aws cloudwatch delete-alarms --alarm-names CIRCU-LI-ION-lambda-errors || true
+
+      - name: Clean Up SNS
+        run: |
+          # Delete SNS topics
+          aws sns delete-topic --topic-arn $(aws sns list-topics --query 'Topics[?contains(TopicArn,`lambda-alerts-dev`)].[TopicArn]' --output text) || true
+
+      - name: Wait for CloudFront
+        run: |
+          sleep 300  # Wait 5 minutes for CloudFront to disable
+
+      - name: Delete CloudFront
+        run: |
+          for DIST_ID in E7B71H3JZDHLH E1R89VII6SDI4C; do
             ETAG=$(aws cloudfront get-distribution --id $DIST_ID --query 'Distribution.ETag' --output text)
-            echo "$CONFIG" | sed 's/"Enabled": true/"Enabled": false/' > tmp_config.json
-            aws cloudfront update-distribution --id $DIST_ID --distribution-config file://tmp_config.json --if-match "$ETAG" || true
+            aws cloudfront delete-distribution --id $DIST_ID --if-match "$ETAG" || true
           done
-          
-          # Delete CloudFront Origin Access Identities
-          for OAI in E3J41MD19IG6S; do
-            aws cloudfront delete-cloud-front-origin-access-identity --id $OAI --if-match $(aws cloudfront get-cloud-front-origin-access-identity --id $OAI --query 'ETag' --output text) || true
-          done
-          
-          # Clean up config files
-          rm -f config.json new_config.json tmp_config.json || true
-          
-          # Import resources
-          terraform import module.storage.aws_s3_bucket.recipe_storage recipe-storage-dev || true
-          terraform import module.processing.aws_lambda_function.recipe_processor recipe_processor_dev || true
-          terraform import module.distribution.aws_cloudfront_distribution.recipe_distribution E1R89VII6SDI4C || true
-          terraform import module.distribution.aws_cloudfront_distribution.recipe_distribution E7B71H3JZDHLH || true
 
-      - name: Terraform Destroy
+      - name: Final Resource Cleanup
         run: |
-          cd terraform/environments/dev
-          terraform destroy -auto-approve \
-            -var="environment=dev" \
-            -var="project=CIRCU-LI-ION" \
-            -var="customer_ip=35.164.185.122"
-
-      - name: Final Cleanup
-        run: |
-          # Delete any remaining CloudFront distributions
-          for DIST_ID in $(aws cloudfront list-distributions --query 'DistributionList.Items[*].Id' --output text); do
-            aws cloudfront delete-distribution --id $DIST_ID --if-match $(aws cloudfront get-distribution --id $DIST_ID --query 'Distribution.ETag' --output text) || true
-          done
+          # Delete any remaining Lambda functions
+          aws lambda delete-function --function-name recipe_processor_dev || true
           
           # Delete any remaining S3 buckets
           aws s3 rb s3://recipe-storage-dev --force || true
           
-          # Delete any remaining Lambda functions
-          aws lambda delete-function --function-name recipe_processor_dev || true
+          # Delete any remaining CloudFront Origin Access Identities
+          for OAI in E3J41MD19IG6S E3JVHJN7DHO9I2; do
+            aws cloudfront delete-cloud-front-origin-access-identity --id $OAI --if-match $(aws cloudfront get-cloud-front-origin-access-identity --id $OAI --query 'ETag' --output text) || true
+          done
