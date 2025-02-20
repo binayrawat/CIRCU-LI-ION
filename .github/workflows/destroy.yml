@@ -24,9 +24,16 @@ jobs:
           cd terraform/environments/dev
           terraform init
 
-      - name: Terraform Destroy
+      - name: Import and Destroy Resources
         run: |
           cd terraform/environments/dev
+          
+          # Import existing resources
+          terraform import module.storage.aws_s3_bucket.recipe_storage recipe-storage-dev
+          terraform import module.processing.aws_lambda_function.recipe_processor recipe_processor_dev
+          terraform import module.distribution.aws_cloudfront_distribution.recipe_distribution E2U3P18FNGKJHS
+          
+          # Destroy everything
           terraform destroy -auto-approve \
             -var="environment=dev" \
             -var="project=CIRCU-LI-ION" \
