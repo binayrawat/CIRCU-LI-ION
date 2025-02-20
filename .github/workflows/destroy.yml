@@ -28,10 +28,15 @@ jobs:
         run: |
           # First disable distributions
           for DIST_ID in E7B71H3JZDHLH E1R89VII6SDI4C; do
-            aws cloudfront get-distribution-config --id $DIST_ID > config.json
-            ETAG=$(aws cloudfront get-distribution-config --id $DIST_ID --query 'ETag' --output text)
-            jq '.DistributionConfig.Enabled = false' config.json > new_config.json
-            aws cloudfront update-distribution --id $DIST_ID --if-match "$ETAG" --distribution-config file://new_config.json
+            # Get current config and etag
+            aws cloudfront get-distribution-config --id $DIST_ID > temp.json
+            ETAG=$(jq -r '.ETag' temp.json)
+            
+            # Extract and modify DistributionConfig
+            jq '.DistributionConfig.Enabled = false | .DistributionConfig' temp.json > config.json
+            
+            # Update distribution
+            aws cloudfront update-distribution --id $DIST_ID --if-match "$ETAG" --distribution-config file://config.json || true
             sleep 30
           done
 
@@ -56,17 +61,23 @@ jobs:
       - name: Clean Up SNS
         run: |
           # Delete SNS topics
-          aws sns delete-topic --topic-arn $(aws sns list-topics --query 'Topics[?contains(TopicArn,`lambda-alerts-dev`)].[TopicArn]' --output text) || true
+          TOPIC_ARN=$(aws sns list-topics --query 'Topics[?contains(TopicArn,`lambda-alerts-dev`)].[TopicArn]' --output text)
+          if [ ! -z "$TOPIC_ARN" ]; then
+            aws sns delete-topic --topic-arn "$TOPIC_ARN"
+          fi
 
       - name: Wait for CloudFront
         run: |
-          sleep 300  # Wait 5 minutes for CloudFront to disable
+          echo "Waiting for CloudFront distributions to be disabled..."
+          sleep 300  # Wait 5 minutes
 
       - name: Delete CloudFront
         run: |
           for DIST_ID in E7B71H3JZDHLH E1R89VII6SDI4C; do
-            ETAG=$(aws cloudfront get-distribution --id $DIST_ID --query 'Distribution.ETag' --output text)
-            aws cloudfront delete-distribution --id $DIST_ID --if-match "$ETAG" || true
+            ETAG=$(aws cloudfront get-distribution --id $DIST_ID --query 'Distribution.ETag' --output text || true)
+            if [ ! -z "$ETAG" ]; then
+              aws cloudfront delete-distribution --id $DIST_ID --if-match "$ETAG" || true
+            fi
           done
 
       - name: Final Resource Cleanup
@@ -79,5 +90,8 @@ jobs:
           
           # Delete any remaining CloudFront Origin Access Identities
           for OAI in E3J41MD19IG6S E3JVHJN7DHO9I2; do
-            aws cloudfront delete-cloud-front-origin-access-identity --id $OAI --if-match $(aws cloudfront get-cloud-front-origin-access-identity --id $OAI --query 'ETag' --output text) || true
+            ETAG=$(aws cloudfront get-cloud-front-origin-access-identity --id $OAI --query 'ETag' --output text || true)
+            if [ ! -z "$ETAG" ]; then
+              aws cloudfront delete-cloud-front-origin-access-identity --id $OAI --if-match "$ETAG" || true
+            fi
           done
