@@ -1,35 +1,47 @@
-name: Terraform Destroy
+name: Destroy Infrastructure
 
 on:
-  workflow_dispatch:  # Allows manual execution  
-
-permissions:
-  id-token: write
-  contents: read
+  workflow_dispatch:
 
 jobs:
-  terraform-destroy:
+  destroy:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v2
 
-      - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v1
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-west-2
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: 1.6.0
+        uses: hashicorp/setup-terraform@v1
 
       - name: Terraform Init
-        run: terraform init
-        working-directory: terraform/environments/dev
+        run: |
+          cd terraform/environments/dev
+          terraform init
+
+      - name: Empty S3 Bucket
+        run: |
+          aws s3 rm s3://circu-li-ion-recipe-storage-dev --recursive || true
+
+      - name: Disable CloudFront Distribution
+        run: |
+          DIST_ID=$(aws cloudfront list-distributions --query 'DistributionList.Items[?Comment!=`null`].Id' --output text)
+          if [ ! -z "$DIST_ID" ]; then
+            CONFIG=$(aws cloudfront get-distribution --id $DIST_ID --query 'Distribution.DistributionConfig' | sed 's/"Enabled": true/"Enabled": false/')
+            ETAG=$(aws cloudfront get-distribution --id $DIST_ID --query 'Distribution.ETag' --output text)
+            echo "$CONFIG" > config.json
+            aws cloudfront update-distribution --id $DIST_ID --distribution-config file://config.json --if-match "$ETAG"
+          fi
 
       - name: Terraform Destroy
-        run: terraform destroy -auto-approve -var="environment=dev" -var="project=CIRCU-LI-ION"
-        working-directory: terraform/environments/dev 
+        run: |
+          cd terraform/environments/dev
+          terraform destroy -auto-approve \
+            -var="environment=dev" \
+            -var="project=CIRCU-LI-ION" \
+            -var="customer_ip=35.164.185.122"
