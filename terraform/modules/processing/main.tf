@@ -57,13 +57,12 @@ resource "aws_iam_role_policy" "lambda_policy" {
 # Here's our actual Lambda function
 # This is like our robot chef that processes recipes
 resource "aws_lambda_function" "recipe_processor" {
-  filename      = var.lambda_zip_path
-  function_name = "recipe_processor_${var.environment}"
-  role          = aws_iam_role.lambda_role.arn
-  handler       = "index.handler"
-  runtime       = "nodejs18.x"
-
-  # These are like settings we tell our robot chef about
+  filename         = "../../src/lambda_function/lambda_function.zip"
+  function_name    = "recipe_processor_${var.environment}"
+  handler          = "index.handler"
+  role            = aws_iam_role.lambda_role.arn
+  runtime         = "nodejs18.x"
+  
   environment {
     variables = {
       BUCKET_NAME = var.bucket_name
@@ -71,10 +70,20 @@ resource "aws_lambda_function" "recipe_processor" {
     }
   }
 
-  # Labels to keep track of which robot chef is which
   tags = {
     Environment = var.environment
     Project     = var.project
+  }
+
+  # Add lifecycle block to prevent updates/recreation
+  lifecycle {
+    ignore_changes = all  # Ignore all changes to this resource
+    # Or specify specific attributes to ignore:
+    # ignore_changes = [
+    #   filename,
+    #   source_code_hash,
+    #   environment,
+    # ]
   }
 }
 
