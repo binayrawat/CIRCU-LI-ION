@@ -1,5 +1,6 @@
 # CloudFront distribution for global delivery
 resource "aws_cloudfront_distribution" "recipe_distribution" {
+  comment = "${var.project}-${var.environment}-${formatdate("YYYYMMDD", timestamp())}"
   origin {
     domain_name = var.bucket_domain_name
     origin_id   = "S3-${var.bucket_name}"
@@ -43,9 +44,19 @@ resource "aws_cloudfront_distribution" "recipe_distribution" {
     cloudfront_default_certificate = true
   }
 
+  lifecycle {
+    prevent_destroy = false  # Allow destruction if needed
+    ignore_changes = [
+      # Add specific attributes to ignore if needed
+      etag,
+      caller_reference
+    ]
+  }
+
   tags = {
     Environment = var.environment
     Project     = var.project
+    Name        = "${var.project}-distribution-${var.environment}"
   }
 }
 
