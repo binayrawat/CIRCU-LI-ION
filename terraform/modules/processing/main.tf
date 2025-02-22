@@ -75,16 +75,15 @@ resource "aws_lambda_function" "recipe_processor" {
     Project     = var.project
   }
 
-  # Add lifecycle block to prevent updates/recreation
   lifecycle {
-    ignore_changes = all  # Ignore all changes to this resource
-    # Or specify specific attributes to ignore:
-    # ignore_changes = [
-    #   filename,
-    #   source_code_hash,
-    #   environment,
-    # ]
+    ignore_changes = all  # Ignore all changes to prevent recreation
+    replace_triggered_by = []  # Don't trigger replacement
   }
+
+  depends_on = [
+    aws_iam_role.lambda_role,
+    aws_cloudwatch_log_group.lambda_logs
+  ]
 }
 
 # Add this before the bucket notification configuration

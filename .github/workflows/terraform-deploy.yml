@@ -51,6 +51,18 @@ jobs:
           terraform import module.processing.aws_cloudwatch_log_group.lambda_logs /aws/lambda/CIRCU-LI-ION-recipe-processor || true
           terraform import module.storage.aws_s3_bucket.recipe_storage recipe-storage-dev || true
           terraform import module.storage.aws_iam_user.customer recipe-customer-dev || true
+          terraform import module.processing.aws_lambda_function.recipe_processor recipe_processor_dev || true
+        working-directory: terraform/environments/dev
+
+      - name: Check and Import Lambda
+        run: |
+          # Check if Lambda exists
+          if aws lambda get-function --function-name recipe_processor_dev &>/dev/null; then
+            echo "Lambda exists, importing into Terraform state..."
+            terraform import module.processing.aws_lambda_function.recipe_processor recipe_processor_dev || true
+          else
+            echo "Lambda doesn't exist, will be created by Terraform"
+          fi
         working-directory: terraform/environments/dev
 
       - name: Terraform Plan
