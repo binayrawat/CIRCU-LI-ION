@@ -393,14 +393,3 @@ resource "aws_lambda_function" "merger" {
   }
 }
 
-# Add variables
-variable "bucket_name" {
-  type        = string
-  description = "Name of the S3 bucket for file processing"
-}
-
-variable "environment" {
-  type        = string
-  description = "Environment name (e.g., dev, prod)"
-}
-

@@ -1,6 +1,6 @@
 variable "environment" {
-  description = "Environment name (e.g., dev, prod)"
   type        = string
+  description = "Environment name (e.g., dev, prod)"
 }
 
 variable "project" {
@@ -10,8 +10,8 @@ variable "project" {
 }
 
 variable "bucket_name" {
-  description = "Name of the S3 bucket"
   type        = string
+  description = "Name of the S3 bucket for file processing"
 }
 
 variable "bucket_arn" {
