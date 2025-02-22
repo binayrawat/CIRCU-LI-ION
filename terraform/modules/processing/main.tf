@@ -78,24 +78,27 @@ resource "aws_lambda_function" "recipe_processor" {
   }
 }
 
-# This tells S3 to notify our Lambda when new recipes arrive
-# Like a bell that rings when someone drops off a new recipe
-resource "aws_s3_bucket_notification" "bucket_notification" {
-  bucket = var.bucket_name
-
-  lambda_function {
-    lambda_function_arn = aws_lambda_function.recipe_processor.arn
-    events              = ["s3:ObjectCreated:*"]
-  }
-}
-
-# Ensure the Lambda function can be invoked by S3
+# Add this before the bucket notification configuration
 resource "aws_lambda_permission" "allow_s3" {
   statement_id  = "AllowExecutionFromS3Bucket"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.recipe_processor.function_name
   principal     = "s3.amazonaws.com"
   source_arn    = var.bucket_arn
+}
+
+# This tells S3 to notify our Lambda when new recipes arrive
+# Like a bell that rings when someone drops off a new recipe
+resource "aws_s3_bucket_notification" "bucket_notification" {
+  # Make sure this depends on the lambda permission
+  depends_on = [aws_lambda_permission.allow_s3]
+  
+  bucket = var.bucket_name
+
+  lambda_function {
+    lambda_function_arn = aws_lambda_function.recipe_processor.arn
+    events              = ["s3:ObjectCreated:*"]
+  }
 }
 
 # Finally, we give S3 permission to wake up our Lambda
