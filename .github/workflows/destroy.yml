@@ -6,217 +6,39 @@ on:
 jobs:
   destroy:
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    
     steps:
-      - uses: actions/checkout@v2
-
+      - uses: actions/checkout@v4
+      
       - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v1
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: us-west-2
-
+          
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v1
+        uses: hashicorp/setup-terraform@v3
+        
+      - name: Find Resources
+        run: |
+          echo "Finding Lambda functions..."
+          LAMBDA_FUNCTIONS=$(aws lambda list-functions --query 'Functions[?starts_with(FunctionName, `recipe_processor_`)].FunctionName' --output text)
+          for FUNC in $LAMBDA_FUNCTIONS; do
+            echo "Found Lambda function: $FUNC"
+          done
+          
+          echo "Checking S3 buckets..."
+          BUCKETS=$(aws s3api list-buckets --query 'Buckets[?starts_with(Name, `recipe-storage-`)].Name' --output text)
+          for BUCKET in $BUCKETS; do
+            echo "Found S3 bucket: $BUCKET"
+            aws s3api get-bucket-location --bucket $BUCKET
+          done
 
-      - name: Terraform Init
+      - name: Terraform Init and Destroy
         run: |
           cd terraform/environments/dev
           terraform init
-
-      - name: Check All Resources
-        id: check-resources
-        run: |
-          echo "Checking CloudFront distributions..."
-          DIST_COUNT=$(aws cloudfront list-distributions --query 'length(DistributionList.Items)' --output text || echo "0")
-          if [ "$DIST_COUNT" = "0" ]; then
-            echo "✅ No CloudFront distributions found"
-          else
-            DIST_IDS=$(aws cloudfront list-distributions --query 'DistributionList.Items[*].Id' --output text)
-            echo "Found distributions: $DIST_IDS"
-            echo "DIST_IDS=$DIST_IDS" >> $GITHUB_ENV
-          fi
-          
-          echo "Checking Origin Access Identities..."
-          OAI_COUNT=$(aws cloudfront list-cloud-front-origin-access-identities --query 'length(CloudFrontOriginAccessIdentityList.Items)' --output text || echo "0")
-          if [ "$OAI_COUNT" = "0" ]; then
-            echo "✅ No Origin Access Identities found"
-          else
-            OAI_IDS=$(aws cloudfront list-cloud-front-origin-access-identities --query 'CloudFrontOriginAccessIdentityList.Items[*].Id' --output text)
-            echo "Found OAIs: $OAI_IDS"
-            echo "OAI_IDS=$OAI_IDS" >> $GITHUB_ENV
-          fi
-          
-          echo "Checking Lambda functions..."
-          if aws lambda get-function --function-name recipe_processor_dev 2>/dev/null; then
-            echo "Found Lambda function: recipe_processor_dev"
-            echo "LAMBDA_EXISTS=true" >> $GITHUB_ENV
-          else
-            echo "✅ No Lambda function found"
-          fi
-          
-          echo "Checking S3 buckets..."
-          if aws s3api head-bucket --bucket recipe-storage-dev 2>/dev/null; then
-            echo "Found S3 bucket: recipe-storage-dev"
-            echo "BUCKET_EXISTS=true" >> $GITHUB_ENV
-          else
-            echo "✅ No S3 bucket found"
-          fi
-
-      - name: Disable and Delete CloudFront Distributions
-        run: |
-          echo "Handling CloudFront distributions..."
-          
-          # Check if there are any distributions
-          DISTRIBUTIONS=$(aws cloudfront list-distributions --query 'DistributionList.Items[*].Id' --output text)
-          
-          if [ -z "$DISTRIBUTIONS" ]; then
-            echo "No CloudFront distributions found."
-            exit 0
-          fi
-          
-          for DIST_ID in $DISTRIBUTIONS; do
-            echo "Processing distribution $DIST_ID"
-            
-            # Get distribution config and ETag
-            echo "Getting distribution config..."
-            DIST_RESPONSE=$(aws cloudfront get-distribution --id $DIST_ID)
-            CURRENT_ETAG=$(echo "$DIST_RESPONSE" | jq -r '.Distribution.ETag')
-            ENABLED=$(echo "$DIST_RESPONSE" | jq -r '.Distribution.DistributionConfig.Enabled')
-            
-            echo "Current ETag: $CURRENT_ETAG"
-            echo "Currently Enabled: $ENABLED"
-            
-            if [ "$ENABLED" = "true" ]; then
-              echo "Distribution is enabled, disabling first..."
-              
-              # Get config for update
-              CONFIG_RESPONSE=$(aws cloudfront get-distribution-config --id $DIST_ID)
-              UPDATE_ETAG=$(echo "$CONFIG_RESPONSE" | jq -r '.ETag')
-              
-              # Create disable config
-              echo "$CONFIG_RESPONSE" | jq -r '.DistributionConfig | .Enabled = false' > temp_config.json
-              
-              # Disable distribution
-              aws cloudfront update-distribution \
-                --id $DIST_ID \
-                --if-match "$UPDATE_ETAG" \
-                --distribution-config file://temp_config.json
-              
-              echo "Waiting for distribution to be disabled..."
-              while true; do
-                STATUS=$(aws cloudfront get-distribution --id $DIST_ID --query 'Distribution.Status' --output text)
-                echo "Current status: $STATUS"
-                if [ "$STATUS" = "Deployed" ]; then
-                  break
-                fi
-                sleep 30
-              done
-            fi
-            
-            # Get final ETag for deletion
-            echo "Getting final ETag for deletion..."
-            FINAL_RESPONSE=$(aws cloudfront get-distribution --id $DIST_ID)
-            FINAL_ETAG=$(echo "$FINAL_RESPONSE" | jq -r '.Distribution.ETag')
-            
-            echo "Final ETag for deletion: $FINAL_ETAG"
-            
-            # Delete distribution
-            echo "Deleting distribution..."
-            aws cloudfront delete-distribution \
-              --id $DIST_ID \
-              --if-match "$FINAL_ETAG"
-            
-            rm -f temp_config.json
-          done
-
-      - name: Delete OAIs
-        run: |
-          echo "Handling Origin Access Identities..."
-          for OAI_ID in $OAI_IDS; do
-            echo "Processing OAI $OAI_ID"
-            
-            # Get the current config
-            CONFIG=$(aws cloudfront get-cloud-front-origin-access-identity-config --id $OAI_ID)
-            ETAG=$(echo "$CONFIG" | jq -r '.ETag')
-            
-            # Delete OAI
-            echo "Deleting OAI $OAI_ID"
-            aws cloudfront delete-cloud-front-origin-access-identity \
-              --id $OAI_ID \
-              --if-match "$ETAG" || echo "Failed to delete OAI $OAI_ID"
-          done
-
-      - name: Delete CloudWatch Log Groups
-        run: |
-          echo "Deleting CloudWatch Log Groups..."
-          aws logs describe-log-groups --query 'logGroups[*].logGroupName' --output text | tr '\t' '\n' | while read -r log_group; do
-            if [ ! -z "$log_group" ]; then
-              echo "Deleting log group: $log_group"
-              aws logs delete-log-group --log-group-name "$log_group" || echo "Failed to delete $log_group"
-            fi
-          done
-
-      - name: Delete SNS Topics
-        run: |
-          echo "Deleting SNS Topics..."
-          aws sns list-topics --query 'Topics[*].TopicArn' --output text | \
-          while read -r topic_arn; do
-            echo "Deleting topic: $topic_arn"
-            aws sns delete-topic --topic-arn "$topic_arn"
-          done
-
-      - name: Clean Up Lambda
-        if: env.LAMBDA_EXISTS == 'true'
-        run: |
-          echo "Deleting Lambda function..."
-          aws lambda delete-function --function-name recipe_processor_dev
-
-      - name: Clean Up S3
-        if: env.BUCKET_EXISTS == 'true'
-        run: |
-          echo "Emptying and deleting S3 bucket..."
-          # First, remove all versions and delete markers
-          versions=$(aws s3api list-object-versions \
-            --bucket recipe-storage-dev \
-            --output json \
-            --query '{Objects: Versions[].{Key:Key,VersionId:VersionId}}')
-          
-          if [ "$versions" != "{}" ]; then
-            echo "$versions" > delete.json
-            aws s3api delete-objects \
-              --bucket recipe-storage-dev \
-              --delete file://delete.json
-          fi
-          
-          # Delete delete markers
-          markers=$(aws s3api list-object-versions \
-            --bucket recipe-storage-dev \
-            --output json \
-            --query '{Objects: DeleteMarkers[].{Key:Key,VersionId:VersionId}}')
-          
-          if [ "$markers" != "{}" ]; then
-            echo "$markers" > delete.json
-            aws s3api delete-objects \
-              --bucket recipe-storage-dev \
-              --delete file://delete.json
-          fi
-          
-          # Now delete the bucket
-          aws s3api delete-bucket --bucket recipe-storage-dev
-
-      - name: Final Resource Check
-        run: |
-          echo "=== Final Resource Check ==="
-          
-          echo "CloudFront distributions:"
-          aws cloudfront list-distributions --query 'DistributionList.Items[*].Id' --output text || echo "No distributions"
-          
-          echo "Origin Access Identities:"
-          aws cloudfront list-cloud-front-origin-access-identities --query 'CloudFrontOriginAccessIdentityList.Items[*].Id' --output text || echo "No OAIs"
-          
-          echo "CloudWatch Log Groups:"
-          aws logs describe-log-groups --query 'logGroups[*].logGroupName' --output text || echo "No log groups"
-          
-          echo "SNS Topics:"
-          aws sns list-topics --query 'Topics[*].TopicArn' --output text || echo "No topics"
+          terraform destroy -auto-approve
