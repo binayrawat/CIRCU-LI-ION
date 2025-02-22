@@ -54,12 +54,21 @@ jobs:
           terraform import module.processing.aws_lambda_function.recipe_processor recipe_processor_dev || true
         working-directory: terraform/environments/dev
 
-      - name: Check and Import Lambda
+      - name: Check and Import Lambda Resources
         run: |
           # Check if Lambda exists
           if aws lambda get-function --function-name recipe_processor_dev &>/dev/null; then
-            echo "Lambda exists, importing into Terraform state..."
+            echo "Lambda exists, importing resources..."
+            
+            # Import Lambda function
             terraform import module.processing.aws_lambda_function.recipe_processor recipe_processor_dev || true
+            
+            # Import Lambda permissions
+            terraform import "module.processing.aws_lambda_permission.allow_s3" "recipe_processor_dev/AllowExecutionFromS3Bucket-dev" || true
+            terraform import "module.processing.aws_lambda_permission.allow_bucket" "recipe_processor_dev/AllowS3Invoke-dev" || true
+            
+            # List existing permissions for verification
+            aws lambda get-policy --function-name recipe_processor_dev || true
           else
             echo "Lambda doesn't exist, will be created by Terraform"
           fi

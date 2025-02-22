@@ -88,11 +88,15 @@ resource "aws_lambda_function" "recipe_processor" {
 
 # Add this before the bucket notification configuration
 resource "aws_lambda_permission" "allow_s3" {
-  statement_id  = "AllowExecutionFromS3Bucket"
+  statement_id  = "AllowExecutionFromS3Bucket-${var.environment}"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.recipe_processor.function_name
   principal     = "s3.amazonaws.com"
   source_arn    = var.bucket_arn
+
+  lifecycle {
+    ignore_changes = all
+  }
 }
 
 # This tells S3 to notify our Lambda when new recipes arrive
@@ -112,11 +116,15 @@ resource "aws_s3_bucket_notification" "bucket_notification" {
 # Finally, we give S3 permission to wake up our Lambda
 # Like giving the bell permission to wake up our robot chef
 resource "aws_lambda_permission" "allow_bucket" {
-  statement_id  = "AllowS3Invoke"
+  statement_id  = "AllowS3Invoke-${var.environment}"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.recipe_processor.function_name
   principal     = "s3.amazonaws.com"
   source_arn    = var.bucket_arn
+
+  lifecycle {
+    ignore_changes = all
+  }
 }
 
 # Add CloudWatch configuration
