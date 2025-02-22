@@ -57,7 +57,7 @@ resource "aws_iam_role_policy" "lambda_policy" {
 # Here's our actual Lambda function
 # This is like our robot chef that processes recipes
 resource "aws_lambda_function" "recipe_processor" {
-  filename         = "../../src/lambda_function/lambda_function.zip"
+  filename         = "${path.module}/../../src/lambda_function.zip"
   function_name    = "recipe_processor_${var.environment}"
   handler          = "index.handler"
   role            = aws_iam_role.lambda_role.arn

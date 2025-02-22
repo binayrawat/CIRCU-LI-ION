@@ -33,9 +33,21 @@ jobs:
 
       - name: Prepare Lambda Function
         run: |
+          echo "Creating Lambda function package..."
           cd terraform/src/lambda_function
+          
+          # Install dependencies
           npm install
-          zip -r ../lambda_function.zip .
+          
+          # Create zip file
+          zip -r lambda_function.zip .
+          
+          # Move zip to correct location
+          mv lambda_function.zip ..
+          
+          # Verify zip exists
+          ls -la ../lambda_function.zip
+        working-directory: ${{ github.workspace }}
 
       - name: Terraform Init
         run: terraform init
