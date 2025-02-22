@@ -1,25 +1,27 @@
 # First, we create a role for our Lambda function
 # Think of this like giving our Lambda function an ID badge
 resource "aws_iam_role" "lambda_role" {
-  name = "recipe_processor_role_${var.environment}"
+  name = "recipe_processor_lambda_role_${var.environment}"
 
   # This part says "Hey, I'm a Lambda function and I need access!"
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Action = "sts:AssumeRole"
-      Effect = "Allow"
-      Principal = {
-        Service = "lambda.amazonaws.com"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "lambda.amazonaws.com"
+        }
       }
-    }]
+    ]
   })
 }
 
 # Now we give our Lambda function some permissions
 # Like a list of things it's allowed to do
 resource "aws_iam_role_policy" "lambda_policy" {
-  name = "recipe_processor_policy"
+  name = "recipe_processor_lambda_policy_${var.environment}"
   role = aws_iam_role.lambda_role.id
 
   policy = jsonencode({
@@ -32,11 +34,12 @@ resource "aws_iam_role_policy" "lambda_policy" {
         Action = [
           "s3:GetObject",
           "s3:PutObject",
+          "s3:DeleteObject",
           "s3:ListBucket"
         ]
         Resource = [
-          var.bucket_arn,
-          "${var.bucket_arn}/*"
+          "arn:aws:s3:::${var.bucket_name}",
+          "arn:aws:s3:::${var.bucket_name}/*"
         ]
       },
       {
@@ -183,7 +186,10 @@ resource "aws_batch_job_queue" "large_file" {
   name     = "recipe_processor_queue_${var.environment}"
   state    = "ENABLED"
   priority = 1
-  compute_environments = [aws_batch_compute_environment.large_file.arn]
+  compute_environment_order {
+    compute_environment = aws_batch_compute_environment.large_file.arn
+    order              = 1
+  }
 }
 
 # Step Functions for orchestration
@@ -367,5 +373,34 @@ resource "aws_iam_role_policy" "step_functions" {
       }
     ]
   })
+}
+
+# Merger Lambda function
+resource "aws_lambda_function" "merger" {
+  filename         = "${path.module}/../../src/merger.zip"
+  function_name    = "recipe_merger_${var.environment}"
+  role            = aws_iam_role.lambda_role.arn
+  handler         = "index.handler"
+  runtime         = "nodejs18.x"
+  timeout         = 900
+  memory_size     = 3008
+
+  environment {
+    variables = {
+      BUCKET_NAME = var.bucket_name
+      ENV         = var.environment
+    }
+  }
+}
+
+# Add variables
+variable "bucket_name" {
+  type        = string
+  description = "Name of the S3 bucket for file processing"
+}
+
+variable "environment" {
+  type        = string
+  description = "Environment name (e.g., dev, prod)"
 }
 

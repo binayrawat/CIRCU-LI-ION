@@ -12,12 +12,10 @@ module "storage" {
 
 # Processing Module
 module "processing" {
-  source              = "../../modules/processing"
-  environment         = var.environment
-  project            = var.project
-  bucket_name        = module.storage.bucket_name
-  bucket_arn         = module.storage.bucket_arn
-  lambda_zip_path    = var.lambda_zip_path
+  source = "../../modules/processing"
+  
+  environment = var.environment
+  bucket_name = module.storage.bucket_name
 }
 
 # Distribution Module
