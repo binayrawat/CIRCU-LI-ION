@@ -7,6 +7,7 @@ module "storage" {
   source      = "../../modules/storage"
   environment = var.environment
   project     = var.project
+  customer_ip = var.customer_ip
 }
 
 # Processing Module
@@ -15,6 +16,7 @@ module "processing" {
   
   environment = var.environment
   bucket_name = module.storage.bucket_name
+  bucket_arn  = module.storage.bucket_arn
 }
 
 # Distribution Module
@@ -37,16 +39,4 @@ module "network" {
   customer_cidr = var.customer_cidr
 }
 */
-
-variable "environment" {
-  type = string
-}
-
-variable "project" {
-  type = string
-}
-
-variable "customer_ip" {
-  type = string
-}
 
