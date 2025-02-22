@@ -5,15 +5,13 @@ variable "aws_region" {
 }
 
 variable "environment" {
-  description = "Environment name"
   type        = string
-  default     = "dev"
+  description = "Environment name (e.g., dev, prod)"
 }
 
 variable "project" {
-  description = "Project name"
   type        = string
-  default     = "CIRCU-LI-ION"
+  description = "Project name"
 }
 
 variable "lambda_zip_path" {
@@ -23,8 +21,8 @@ variable "lambda_zip_path" {
 }
 
 variable "customer_ip" {
-  description = "Customer gateway public IP"
   type        = string
+  description = "Customer IP address for security group rules"
 }
 
 variable "customer_cidr" {
