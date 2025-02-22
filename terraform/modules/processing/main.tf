@@ -161,3 +161,114 @@ resource "aws_sns_topic" "alerts" {
   name = "lambda-alerts-${var.environment}"
 }
 
+# Add Batch computing resources for large file processing
+resource "aws_batch_compute_environment" "large_file" {
+  compute_environment_name = "recipe_processor_batch_${var.environment}"
+
+  compute_resources {
+    max_vcpus = 16
+    security_group_ids = [aws_security_group.batch.id]
+    subnets = data.aws_subnets.default.ids
+    type = "FARGATE"
+    
+    instance_type = ["optimal"]
+  }
+
+  service_role = aws_iam_role.batch_service_role.arn
+  type         = "MANAGED"
+  state        = "ENABLED"
+}
+
+resource "aws_batch_job_queue" "large_file" {
+  name     = "recipe_processor_queue_${var.environment}"
+  state    = "ENABLED"
+  priority = 1
+  compute_environments = [aws_batch_compute_environment.large_file.arn]
+}
+
+# Step Functions for orchestration
+resource "aws_sfn_state_machine" "large_file_processor" {
+  name     = "recipe_processor_workflow_${var.environment}"
+  role_arn = aws_iam_role.step_functions_role.arn
+
+  definition = <<EOF
+{
+  "StartAt": "CheckFileSize",
+  "States": {
+    "CheckFileSize": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.fileSize",
+          "NumericGreaterThan": 500000000,
+          "Next": "InitializeChunking"
+        }
+      ],
+      "Default": "ProcessSmallFile"
+    },
+    "InitializeChunking": {
+      "Type": "Task",
+      "Resource": "${aws_lambda_function.chunk_initializer.arn}",
+      "Next": "ProcessChunks"
+    },
+    "ProcessChunks": {
+      "Type": "Map",
+      "ItemsPath": "$.chunks",
+      "Iterator": {
+        "StartAt": "ProcessChunk",
+        "States": {
+          "ProcessChunk": {
+            "Type": "Task",
+            "Resource": "${aws_batch_job_definition.chunk_processor.arn}",
+            "End": true
+          }
+        }
+      },
+      "Next": "MergeResults"
+    },
+    "MergeResults": {
+      "Type": "Task",
+      "Resource": "${aws_lambda_function.merger.arn}",
+      "End": true
+    },
+    "ProcessSmallFile": {
+      "Type": "Task",
+      "Resource": "${aws_lambda_function.recipe_processor.arn}",
+      "End": true
+    }
+  }
+}
+EOF
+}
+
+# Lambda function for chunk initialization
+resource "aws_lambda_function" "chunk_initializer" {
+  filename         = "${path.module}/../../src/chunk_initializer.zip"
+  function_name    = "recipe_chunk_initializer_${var.environment}"
+  role            = aws_iam_role.lambda_role.arn
+  handler         = "index.handler"
+  runtime         = "nodejs18.x"
+  timeout         = 900
+  memory_size     = 1024
+}
+
+# Batch job definition for chunk processing
+resource "aws_batch_job_definition" "chunk_processor" {
+  name = "recipe_chunk_processor_${var.environment}"
+  type = "container"
+  
+  container_properties = jsonencode({
+    image = "${aws_ecr_repository.processor.repository_url}:latest"
+    resourceRequirements = [
+      {
+        type  = "VCPU"
+        value = "4"
+      },
+      {
+        type  = "MEMORY"
+        value = "16384"
+      }
+    ]
+  })
+}
+
