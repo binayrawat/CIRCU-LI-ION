@@ -32,12 +32,19 @@ exports.handler = async (event) => {
         const fileSize = headObject.ContentLength;
         console.log('File size:', fileSize);
 
-        // Initialize multipart upload for the zip file
         const processedKey = `processed/${key.split('/').pop().split('.')[0]}.zip`;
+        console.log('Will save to:', processedKey);
+
+        // Initialize multipart upload
         const multipartUpload = await s3.createMultipartUpload({
             Bucket: bucket,
             Key: processedKey,
-            ContentType: 'application/zip'
+            ContentType: 'application/zip',
+            Metadata: {
+                'processed-date': new Date().toISOString(),
+                'original-file': key,
+                'original-size': fileSize.toString()
+            }
         }).promise();
 
         try {
@@ -59,7 +66,7 @@ exports.handler = async (event) => {
 
                 // Create zip for this chunk
                 const zip = new AdmZip();
-                zip.addFile(`chunk_${partNumber}.json`, chunk.Body);
+                zip.addFile(`part_${partNumber}.json`, chunk.Body);
                 const zipBuffer = zip.toBuffer();
 
                 // Upload zip chunk
@@ -78,9 +85,12 @@ exports.handler = async (event) => {
 
                 position = end;
                 partNumber++;
+                
+                console.log(`Completed chunk ${partNumber-1}`);
             }
 
             // Complete multipart upload
+            console.log('Completing multipart upload...');
             await s3.completeMultipartUpload({
                 Bucket: bucket,
                 Key: processedKey,
@@ -109,7 +119,11 @@ exports.handler = async (event) => {
             throw error;
         }
     } catch (error) {
-        console.error('Processing error:', error);
+        console.error('Processing error:', {
+            error: error.message,
+            stack: error.stack,
+            event: JSON.stringify(event, null, 2)
+        });
         throw error;
     }
 }; 
