@@ -1,0 +1,15 @@
+{
+    "recipe_id": "TEST_003",
+    "name": "Battery Recycling Process",
+    "version": "1.0",
+    "steps": [
+        {
+            "step_id": 1,
+            "action": "DISASSEMBLE",
+            "parameters": {
+                "component": "battery_pack",
+                "method": "mechanical"
+            }
+        }
+    ]
+}
