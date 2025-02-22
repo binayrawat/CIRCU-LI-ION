@@ -16,7 +16,7 @@ exports.handler = async (event) => {
         const bucket = event.Records[0].s3.bucket.name;
         const key = decodeURIComponent(event.Records[0].s3.object.key.replace(/\+/g, ' '));
         
-        console.log('Starting to process:', { bucket, key });
+        console.log('Processing file:', { bucket, key });
 
         // Skip if already processed
         if (key.startsWith('processed/')) {
@@ -28,172 +28,88 @@ exports.handler = async (event) => {
         }
 
         // Get file metadata
-        console.log('Getting file metadata...');
-        const headObject = await s3.headObject({ 
-            Bucket: bucket, 
-            Key: key 
-        }).promise();
-        
+        const headObject = await s3.headObject({ Bucket: bucket, Key: key }).promise();
         const fileSize = headObject.ContentLength;
-        console.log('File size:', fileSize, 'bytes');
+        console.log('File size:', fileSize);
 
-        // For large files (>500MB)
-        if (fileSize > 500 * 1024 * 1024) {
-            console.log('Large file detected, using streaming approach');
-            
-            // Create read stream
-            const readStream = s3.getObject({
-                Bucket: bucket,
-                Key: key
-            }).createReadStream();
+        // Initialize multipart upload for the zip file
+        const processedKey = `processed/${key.split('/').pop().split('.')[0]}.zip`;
+        const multipartUpload = await s3.createMultipartUpload({
+            Bucket: bucket,
+            Key: processedKey,
+            ContentType: 'application/zip'
+        }).promise();
 
-            // Create write stream for temporary file
-            const processedKey = `processed/${key.split('/').pop().split('.')[0]}.zip`;
-            console.log('Will save to:', processedKey);
+        try {
+            const parts = [];
+            let partNumber = 1;
+            let position = 0;
 
-            // Initialize multipart upload
-            console.log('Initializing multipart upload...');
-            const multipartUpload = await s3.createMultipartUpload({
-                Bucket: bucket,
-                Key: processedKey,
-                ContentType: 'application/zip',
-                Metadata: {
-                    'processed-date': new Date().toISOString(),
-                    'original-file': key,
-                    'original-size': fileSize.toString()
-                }
-            }).promise();
+            while (position < fileSize) {
+                const end = Math.min(position + CHUNK_SIZE, fileSize);
+                console.log(`Processing chunk ${partNumber}: bytes ${position} to ${end}`);
 
-            try {
-                const uploadId = multipartUpload.UploadId;
-                const parts = [];
-                let partNumber = 1;
-                let currentBuffer = Buffer.from([]);
+                // Get chunk of original file
+                const range = `bytes=${position}-${end-1}`;
+                const chunk = await s3.getObject({
+                    Bucket: bucket,
+                    Key: key,
+                    Range: range
+                }).promise();
 
-                // Process the stream
-                await new Promise((resolve, reject) => {
-                    readStream.on('data', async chunk => {
-                        try {
-                            currentBuffer = Buffer.concat([currentBuffer, chunk]);
-                            
-                            // If buffer is large enough, upload as a part
-                            if (currentBuffer.length >= CHUNK_SIZE) {
-                                console.log(`Uploading part ${partNumber}...`);
-                                const partBuffer = currentBuffer;
-                                currentBuffer = Buffer.from([]);
+                // Create zip for this chunk
+                const zip = new AdmZip();
+                zip.addFile(`chunk_${partNumber}.json`, chunk.Body);
+                const zipBuffer = zip.toBuffer();
 
-                                const uploadResult = await s3.uploadPart({
-                                    Bucket: bucket,
-                                    Key: processedKey,
-                                    PartNumber: partNumber,
-                                    UploadId: uploadId,
-                                    Body: partBuffer
-                                }).promise();
-
-                                parts.push({
-                                    PartNumber: partNumber,
-                                    ETag: uploadResult.ETag
-                                });
-                                
-                                partNumber++;
-                                console.log(`Part ${partNumber-1} uploaded`);
-                            }
-                        } catch (error) {
-                            reject(error);
-                        }
-                    });
-
-                    readStream.on('end', async () => {
-                        try {
-                            // Upload any remaining data
-                            if (currentBuffer.length > 0) {
-                                console.log('Uploading final part...');
-                                const uploadResult = await s3.uploadPart({
-                                    Bucket: bucket,
-                                    Key: processedKey,
-                                    PartNumber: partNumber,
-                                    UploadId: uploadId,
-                                    Body: currentBuffer
-                                }).promise();
-
-                                parts.push({
-                                    PartNumber: partNumber,
-                                    ETag: uploadResult.ETag
-                                });
-                            }
-
-                            // Complete multipart upload
-                            console.log('Completing multipart upload...');
-                            await s3.completeMultipartUpload({
-                                Bucket: bucket,
-                                Key: processedKey,
-                                UploadId: uploadId,
-                                MultipartUpload: { Parts: parts }
-                            }).promise();
-
-                            resolve();
-                        } catch (error) {
-                            reject(error);
-                        }
-                    });
-
-                    readStream.on('error', error => {
-                        console.error('Stream error:', error);
-                        reject(error);
-                    });
-                });
-
-                console.log('Large file processing completed successfully');
-
-            } catch (error) {
-                console.error('Error during multipart upload:', error);
-                // Abort multipart upload on error
-                await s3.abortMultipartUpload({
+                // Upload zip chunk
+                const uploadResult = await s3.uploadPart({
                     Bucket: bucket,
                     Key: processedKey,
-                    UploadId: multipartUpload.UploadId
+                    PartNumber: partNumber,
+                    UploadId: multipartUpload.UploadId,
+                    Body: zipBuffer
                 }).promise();
-                throw error;
+
+                parts.push({
+                    PartNumber: partNumber,
+                    ETag: uploadResult.ETag
+                });
+
+                position = end;
+                partNumber++;
             }
 
-        } else {
-            // Original code for small files
-            console.log('Processing small file normally');
-            const file = await s3.getObject({
-                Bucket: bucket,
-                Key: key
-            }).promise();
-            
-            const zip = new AdmZip();
-            zip.addFile(key.split('/').pop(), file.Body);
-            
-            const processedKey = `processed/${key.split('/').pop().split('.')[0]}.zip`;
-            await s3.putObject({
+            // Complete multipart upload
+            await s3.completeMultipartUpload({
                 Bucket: bucket,
                 Key: processedKey,
-                Body: zip.toBuffer(),
-                ContentType: 'application/zip',
-                Metadata: {
-                    'processed-date': new Date().toISOString(),
-                    'original-file': key
-                }
+                UploadId: multipartUpload.UploadId,
+                MultipartUpload: { Parts: parts }
             }).promise();
+
+            console.log('Processing completed successfully');
+            return {
+                statusCode: 200,
+                body: JSON.stringify({
+                    message: 'Success',
+                    file: key,
+                    processedFile: processedKey
+                })
+            };
+
+        } catch (error) {
+            console.error('Error during processing:', error);
+            // Abort multipart upload on error
+            await s3.abortMultipartUpload({
+                Bucket: bucket,
+                Key: processedKey,
+                UploadId: multipartUpload.UploadId
+            }).promise();
+            throw error;
         }
-
-        return {
-            statusCode: 200,
-            body: JSON.stringify({
-                message: 'Success',
-                file: key
-            })
-        };
-
     } catch (error) {
-        console.error('Processing error:', {
-            error: error.message,
-            stack: error.stack,
-            event: JSON.stringify(event, null, 2)
-        });
+        console.error('Processing error:', error);
         throw error;
     }
 }; 
