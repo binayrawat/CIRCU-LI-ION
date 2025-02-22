@@ -66,7 +66,16 @@ jobs:
       - name: Disable and Delete CloudFront Distributions
         run: |
           echo "Handling CloudFront distributions..."
-          for DIST_ID in $(aws cloudfront list-distributions --query 'DistributionList.Items[*].Id' --output text); do
+          
+          # Check if there are any distributions
+          DISTRIBUTIONS=$(aws cloudfront list-distributions --query 'DistributionList.Items[*].Id' --output text)
+          
+          if [ -z "$DISTRIBUTIONS" ]; then
+            echo "No CloudFront distributions found."
+            exit 0
+          fi
+          
+          for DIST_ID in $DISTRIBUTIONS; do
             echo "Processing distribution $DIST_ID"
             
             # Get distribution config and ETag
