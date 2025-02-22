@@ -72,15 +72,17 @@ jobs:
             # Get the current config
             CONFIG=$(aws cloudfront get-distribution-config --id $DIST_ID)
             ETAG=$(echo "$CONFIG" | jq -r '.ETag')
+            DIST_CONFIG=$(echo "$CONFIG" | jq -r '.DistributionConfig')
             
-            # Disable the distribution
+            # Create updated config with disabled distribution
+            echo "$DIST_CONFIG" | jq '.Enabled = false' > temp_config.json
+            
+            # Update distribution
             echo "Disabling distribution $DIST_ID"
-            echo "$CONFIG" | jq '.DistributionConfig.Enabled = false' > temp_config.json
-            
             aws cloudfront update-distribution \
               --id $DIST_ID \
-              --distribution-config file://temp_config.json \
-              --if-match "$ETAG"
+              --if-match "$ETAG" \
+              --distribution-config file://temp_config.json
             
             # Wait for deployment
             echo "Waiting for distribution to be disabled..."
