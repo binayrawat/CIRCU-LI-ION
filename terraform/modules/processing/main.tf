@@ -272,3 +272,100 @@ resource "aws_batch_job_definition" "chunk_processor" {
   })
 }
 
+# VPC and Security Group for Batch
+resource "aws_security_group" "batch" {
+  name        = "recipe-processor-batch-${var.environment}"
+  description = "Security group for Batch compute environment"
+  vpc_id      = data.aws_vpc.default.id
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+# Data sources for VPC and Subnets
+data "aws_vpc" "default" {
+  default = true
+}
+
+data "aws_subnets" "default" {
+  filter {
+    name   = "vpc-id"
+    values = [data.aws_vpc.default.id]
+  }
+}
+
+# ECR Repository
+resource "aws_ecr_repository" "processor" {
+  name = "recipe-processor-${var.environment}"
+  
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+}
+
+# IAM Role for Batch Service
+resource "aws_iam_role" "batch_service_role" {
+  name = "recipe-processor-batch-service-${var.environment}"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "batch.amazonaws.com"
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "batch_service" {
+  role       = aws_iam_role.batch_service_role.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSBatchServiceRole"
+}
+
+# IAM Role for Step Functions
+resource "aws_iam_role" "step_functions_role" {
+  name = "recipe-processor-step-functions-${var.environment}"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "states.amazonaws.com"
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy" "step_functions" {
+  name = "recipe-processor-step-functions-${var.environment}"
+  role = aws_iam_role.step_functions_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "batch:SubmitJob",
+          "batch:DescribeJobs",
+          "batch:TerminateJob",
+          "lambda:InvokeFunction"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
