@@ -1,4 +1,4 @@
-# Hey! Welcome to Our Robot Recipe Manager!
+# Hey! Welcome to Our Robot Recipe Manager.
 
 ## What's This All About?
 Think of this as a super-organized digital cookbook for robots! You know how we keep recipes for cooking? This is just like that, but for teaching robots how to move and work. Pretty cool, right?
