@@ -63,55 +63,70 @@ jobs:
             echo "✅ No S3 bucket found"
           fi
 
-      - name: Disable CloudFront Distributions
-        if: env.DIST_IDS != ''
+      - name: Disable and Delete CloudFront Distributions
         run: |
+          echo "Handling CloudFront distributions..."
           for DIST_ID in $DIST_IDS; do
-            echo "Working on distribution $DIST_ID"
-            DIST_CONFIG=$(aws cloudfront get-distribution-config --id $DIST_ID)
-            ETAG=$(echo "$DIST_CONFIG" | jq -r '.ETag')
-            echo "$DIST_CONFIG" | jq '.DistributionConfig.Enabled = false | .DistributionConfig' > config.json
+            echo "Processing distribution $DIST_ID"
+            
+            # Get the current config
+            CONFIG=$(aws cloudfront get-distribution-config --id $DIST_ID)
+            ETAG=$(echo "$CONFIG" | jq -r '.ETag')
+            
+            # Disable the distribution
+            echo "Disabling distribution $DIST_ID"
+            echo "$CONFIG" | jq '.DistributionConfig.Enabled = false' > temp_config.json
+            
             aws cloudfront update-distribution \
               --id $DIST_ID \
-              --distribution-config file://config.json \
-              --if-match "$ETAG" || echo "Failed to disable $DIST_ID"
-          done
-
-      - name: Wait for Distributions
-        if: env.DIST_IDS != ''
-        run: |
-          for DIST_ID in $DIST_IDS; do
-            echo "Waiting for distribution $DIST_ID to be deployed..."
-            while true; do
-              STATUS=$(aws cloudfront get-distribution --id $DIST_ID --query 'Distribution.Status' --output text)
-              echo "Current status of $DIST_ID: $STATUS"
-              if [ "$STATUS" = "Deployed" ]; then
-                break
-              fi
-              sleep 30
-            done
-          done
-
-      - name: Delete CloudFront Distributions
-        if: env.DIST_IDS != ''
-        run: |
-          for DIST_ID in $DIST_IDS; do
+              --distribution-config file://temp_config.json \
+              --if-match "$ETAG"
+            
+            # Wait for deployment
+            echo "Waiting for distribution to be disabled..."
+            aws cloudfront wait distribution-deployed --id $DIST_ID
+            
+            # Get new ETAG and delete
+            NEW_ETAG=$(aws cloudfront get-distribution --id $DIST_ID --query 'Distribution.ETag' --output text)
             echo "Deleting distribution $DIST_ID"
-            ETAG=$(aws cloudfront get-distribution --id $DIST_ID --query 'Distribution.ETag' --output text)
             aws cloudfront delete-distribution \
               --id $DIST_ID \
-              --if-match "$ETAG" || echo "Failed to delete $DIST_ID"
+              --if-match "$NEW_ETAG"
           done
 
-      - name: Delete Origin Access Identities
-        if: env.OAI_IDS != ''
+      - name: Delete OAIs
         run: |
+          echo "Handling Origin Access Identities..."
           for OAI_ID in $OAI_IDS; do
+            echo "Processing OAI $OAI_ID"
+            
+            # Get the current config
+            CONFIG=$(aws cloudfront get-cloud-front-origin-access-identity-config --id $OAI_ID)
+            ETAG=$(echo "$CONFIG" | jq -r '.ETag')
+            
+            # Delete OAI
             echo "Deleting OAI $OAI_ID"
-            ETAG=$(aws cloudfront get-cloud-front-origin-access-identity --id $OAI_ID --query 'ETag' --output text)
             aws cloudfront delete-cloud-front-origin-access-identity \
               --id $OAI_ID \
               --if-match "$ETAG" || echo "Failed to delete OAI $OAI_ID"
+          done
+
+      - name: Delete CloudWatch Log Groups
+        run: |
+          echo "Deleting CloudWatch Log Groups..."
+          aws logs describe-log-groups --query 'logGroups[*].logGroupName' --output text | \
+          while read -r log_group; do
+            echo "Deleting log group: $log_group"
+            aws logs delete-log-group --log-group-name "$log_group"
+          done
+
+      - name: Delete SNS Topics
+        run: |
+          echo "Deleting SNS Topics..."
+          aws sns list-topics --query 'Topics[*].TopicArn' --output text | \
+          while read -r topic_arn; do
+            echo "Deleting topic: $topic_arn"
+            aws sns delete-topic --topic-arn "$topic_arn"
           done
 
       - name: Clean Up Lambda
@@ -124,29 +139,47 @@ jobs:
         if: env.BUCKET_EXISTS == 'true'
         run: |
           echo "Emptying and deleting S3 bucket..."
-          aws s3 rm s3://recipe-storage-dev --recursive
+          # First, remove all versions and delete markers
+          versions=$(aws s3api list-object-versions \
+            --bucket recipe-storage-dev \
+            --output json \
+            --query '{Objects: Versions[].{Key:Key,VersionId:VersionId}}')
+          
+          if [ "$versions" != "{}" ]; then
+            echo "$versions" > delete.json
+            aws s3api delete-objects \
+              --bucket recipe-storage-dev \
+              --delete file://delete.json
+          fi
+          
+          # Delete delete markers
+          markers=$(aws s3api list-object-versions \
+            --bucket recipe-storage-dev \
+            --output json \
+            --query '{Objects: DeleteMarkers[].{Key:Key,VersionId:VersionId}}')
+          
+          if [ "$markers" != "{}" ]; then
+            echo "$markers" > delete.json
+            aws s3api delete-objects \
+              --bucket recipe-storage-dev \
+              --delete file://delete.json
+          fi
+          
+          # Now delete the bucket
           aws s3api delete-bucket --bucket recipe-storage-dev
 
-      - name: Final Verification
+      - name: Final Resource Check
         run: |
           echo "=== Final Resource Check ==="
           
           echo "CloudFront distributions:"
-          if [ "$(aws cloudfront list-distributions --query 'length(DistributionList.Items)' --output text)" = "0" ]; then
-            echo "✅ No distributions remain"
-          fi
+          aws cloudfront list-distributions --query 'DistributionList.Items[*].Id' --output text || echo "No distributions"
           
           echo "Origin Access Identities:"
-          if [ "$(aws cloudfront list-cloud-front-origin-access-identities --query 'length(CloudFrontOriginAccessIdentityList.Items)' --output text)" = "0" ]; then
-            echo "✅ No OAIs remain"
-          fi
+          aws cloudfront list-cloud-front-origin-access-identities --query 'CloudFrontOriginAccessIdentityList.Items[*].Id' --output text || echo "No OAIs"
           
-          echo "Lambda functions:"
-          if ! aws lambda get-function --function-name recipe_processor_dev 2>/dev/null; then
-            echo "✅ No Lambda function remains"
-          fi
+          echo "CloudWatch Log Groups:"
+          aws logs describe-log-groups --query 'logGroups[*].logGroupName' --output text || echo "No log groups"
           
-          echo "S3 buckets:"
-          if ! aws s3api head-bucket --bucket recipe-storage-dev 2>/dev/null; then
-            echo "✅ No S3 bucket remains"
-          fi
+          echo "SNS Topics:"
+          aws sns list-topics --query 'Topics[*].TopicArn' --output text || echo "No topics"
