@@ -63,6 +63,10 @@ resource "aws_lambda_function" "recipe_processor" {
   role            = aws_iam_role.lambda_role.arn
   runtime         = "nodejs18.x"
   
+  # Updated configuration for large files
+  memory_size     = 3008  # Maximum memory for Lambda
+  timeout         = 900   # 15 minutes (maximum timeout)
+
   environment {
     variables = {
       BUCKET_NAME = var.bucket_name
@@ -70,9 +74,11 @@ resource "aws_lambda_function" "recipe_processor" {
     }
   }
 
+  # Add tags
   tags = {
     Environment = var.environment
     Project     = var.project
+    Name        = "recipe_processor"
   }
 
   lifecycle {
