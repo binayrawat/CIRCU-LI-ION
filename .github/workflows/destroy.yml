@@ -114,10 +114,11 @@ jobs:
       - name: Delete CloudWatch Log Groups
         run: |
           echo "Deleting CloudWatch Log Groups..."
-          aws logs describe-log-groups --query 'logGroups[*].logGroupName' --output text | \
-          while read -r log_group; do
-            echo "Deleting log group: $log_group"
-            aws logs delete-log-group --log-group-name "$log_group"
+          aws logs describe-log-groups --query 'logGroups[*].logGroupName' --output text | tr '\t' '\n' | while read -r log_group; do
+            if [ ! -z "$log_group" ]; then
+              echo "Deleting log group: $log_group"
+              aws logs delete-log-group --log-group-name "$log_group" || echo "Failed to delete $log_group"
+            fi
           done
 
       - name: Delete SNS Topics
