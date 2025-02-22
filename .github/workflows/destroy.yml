@@ -69,44 +69,51 @@ jobs:
           for DIST_ID in $(aws cloudfront list-distributions --query 'DistributionList.Items[*].Id' --output text); do
             echo "Processing distribution $DIST_ID"
             
-            # Function to get distribution status
-            get_status() {
-              aws cloudfront get-distribution --id $DIST_ID \
-                --query 'Distribution.Status' --output text
-            }
+            # Get distribution config and ETag
+            echo "Getting distribution config..."
+            DIST_RESPONSE=$(aws cloudfront get-distribution --id $DIST_ID)
+            CURRENT_ETAG=$(echo "$DIST_RESPONSE" | jq -r '.Distribution.ETag')
+            ENABLED=$(echo "$DIST_RESPONSE" | jq -r '.Distribution.DistributionConfig.Enabled')
             
-            # Get initial config
-            DIST_CONFIG=$(aws cloudfront get-distribution-config --id $DIST_ID)
-            ETAG=$(echo "$DIST_CONFIG" | jq -r '.ETag')
-            
-            # Check if already disabled
-            ENABLED=$(echo "$DIST_CONFIG" | jq -r '.DistributionConfig.Enabled')
+            echo "Current ETag: $CURRENT_ETAG"
+            echo "Currently Enabled: $ENABLED"
             
             if [ "$ENABLED" = "true" ]; then
-              echo "Disabling distribution $DIST_ID"
+              echo "Distribution is enabled, disabling first..."
               
-              # Create updated config
-              echo "$DIST_CONFIG" | jq -r '.DistributionConfig | .Enabled = false' > temp_config.json
+              # Get config for update
+              CONFIG_RESPONSE=$(aws cloudfront get-distribution-config --id $DIST_ID)
+              UPDATE_ETAG=$(echo "$CONFIG_RESPONSE" | jq -r '.ETag')
               
-              # Disable the distribution
+              # Create disable config
+              echo "$CONFIG_RESPONSE" | jq -r '.DistributionConfig | .Enabled = false' > temp_config.json
+              
+              # Disable distribution
               aws cloudfront update-distribution \
                 --id $DIST_ID \
-                --if-match "$ETAG" \
+                --if-match "$UPDATE_ETAG" \
                 --distribution-config file://temp_config.json
               
-              # Wait for deployment to complete
               echo "Waiting for distribution to be disabled..."
-              while [ "$(get_status)" = "InProgress" ]; do
-                echo "Still waiting... (Status: InProgress)"
+              while true; do
+                STATUS=$(aws cloudfront get-distribution --id $DIST_ID --query 'Distribution.Status' --output text)
+                echo "Current status: $STATUS"
+                if [ "$STATUS" = "Deployed" ]; then
+                  break
+                fi
                 sleep 30
               done
             fi
             
-            # Get fresh ETag after disable
-            FINAL_CONFIG=$(aws cloudfront get-distribution --id $DIST_ID)
-            FINAL_ETAG=$(echo "$FINAL_CONFIG" | jq -r '.Distribution.ETag')
+            # Get final ETag for deletion
+            echo "Getting final ETag for deletion..."
+            FINAL_RESPONSE=$(aws cloudfront get-distribution --id $DIST_ID)
+            FINAL_ETAG=$(echo "$FINAL_RESPONSE" | jq -r '.Distribution.ETag')
             
-            echo "Attempting to delete distribution with ETag: $FINAL_ETAG"
+            echo "Final ETag for deletion: $FINAL_ETAG"
+            
+            # Delete distribution
+            echo "Deleting distribution..."
             aws cloudfront delete-distribution \
               --id $DIST_ID \
               --if-match "$FINAL_ETAG"
