@@ -73,26 +73,27 @@ jobs:
             DIST_CONFIG=$(aws cloudfront get-distribution-config --id $DIST_ID)
             ETAG=$(echo "$DIST_CONFIG" | jq -r '.ETag')
             
-            # Extract and modify the distribution config
-            echo "$DIST_CONFIG" | jq '.DistributionConfig.Enabled = false' > temp_config.json
+            # Extract only the DistributionConfig part and set Enabled to false
+            echo "$DIST_CONFIG" | jq -r '.DistributionConfig' | \
+              jq '.Enabled = false' > temp_config.json
             
             # Update the distribution to disable it
             echo "Disabling distribution $DIST_ID"
             aws cloudfront update-distribution \
               --id $DIST_ID \
-              --distribution-config file://temp_config.json \
-              --if-match "$ETAG"
+              --if-match "$ETAG" \
+              --distribution-config file://temp_config.json
             
             # Wait for distribution to be disabled
             echo "Waiting for distribution to be disabled..."
             aws cloudfront wait distribution-deployed --id $DIST_ID
             
-            # Get the new ETag after disabling
-            DISABLED_CONFIG=$(aws cloudfront get-distribution --id $DIST_ID)
-            NEW_ETAG=$(echo "$DISABLED_CONFIG" | jq -r '.Distribution.ETag')
+            # Get the new ETag for deletion
+            NEW_ETAG=$(aws cloudfront get-distribution --id $DIST_ID \
+              --query 'Distribution.ETag' --output text)
             
             # Delete the distribution
-            echo "Deleting distribution $DIST_ID with ETag: $NEW_ETAG"
+            echo "Deleting distribution $DIST_ID"
             aws cloudfront delete-distribution \
               --id $DIST_ID \
               --if-match "$NEW_ETAG"
