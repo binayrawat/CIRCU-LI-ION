@@ -66,34 +66,38 @@ jobs:
       - name: Disable and Delete CloudFront Distributions
         run: |
           echo "Handling CloudFront distributions..."
-          for DIST_ID in $DIST_IDS; do
+          for DIST_ID in $(aws cloudfront list-distributions --query 'DistributionList.Items[*].Id' --output text); do
             echo "Processing distribution $DIST_ID"
             
-            # Get the current config
-            CONFIG=$(aws cloudfront get-distribution-config --id $DIST_ID)
-            ETAG=$(echo "$CONFIG" | jq -r '.ETag')
-            DIST_CONFIG=$(echo "$CONFIG" | jq -r '.DistributionConfig')
+            # Get current config and ETag
+            DIST_CONFIG=$(aws cloudfront get-distribution-config --id $DIST_ID)
+            ETAG=$(echo "$DIST_CONFIG" | jq -r '.ETag')
             
-            # Create updated config with disabled distribution
-            echo "$DIST_CONFIG" | jq '.Enabled = false' > temp_config.json
+            # Extract and modify the distribution config
+            echo "$DIST_CONFIG" | jq '.DistributionConfig.Enabled = false' > temp_config.json
             
-            # Update distribution
+            # Update the distribution to disable it
             echo "Disabling distribution $DIST_ID"
             aws cloudfront update-distribution \
               --id $DIST_ID \
-              --if-match "$ETAG" \
-              --distribution-config file://temp_config.json
+              --distribution-config file://temp_config.json \
+              --if-match "$ETAG"
             
-            # Wait for deployment
+            # Wait for distribution to be disabled
             echo "Waiting for distribution to be disabled..."
             aws cloudfront wait distribution-deployed --id $DIST_ID
             
-            # Get new ETAG and delete
-            NEW_ETAG=$(aws cloudfront get-distribution --id $DIST_ID --query 'Distribution.ETag' --output text)
-            echo "Deleting distribution $DIST_ID"
+            # Get the new ETag after disabling
+            DISABLED_CONFIG=$(aws cloudfront get-distribution --id $DIST_ID)
+            NEW_ETAG=$(echo "$DISABLED_CONFIG" | jq -r '.Distribution.ETag')
+            
+            # Delete the distribution
+            echo "Deleting distribution $DIST_ID with ETag: $NEW_ETAG"
             aws cloudfront delete-distribution \
               --id $DIST_ID \
               --if-match "$NEW_ETAG"
+            
+            rm -f temp_config.json
           done
 
       - name: Delete OAIs
