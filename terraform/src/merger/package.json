@@ -1,0 +1,10 @@
+{
+  "name": "recipe-merger",
+  "version": "1.0.0",
+  "description": "Lambda function for merging processed chunks",
+  "main": "index.js",
+  "dependencies": {
+    "archiver": "^5.3.1",
+    "aws-sdk": "^2.1450.0"
+  }
+} 
