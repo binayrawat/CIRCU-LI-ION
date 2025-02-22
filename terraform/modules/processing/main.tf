@@ -63,9 +63,9 @@ resource "aws_lambda_function" "recipe_processor" {
   role            = aws_iam_role.lambda_role.arn
   runtime         = "nodejs18.x"
   
-  # Updated configuration for large files
-  memory_size     = 3008  # Maximum memory for Lambda
-  timeout         = 900   # 15 minutes (maximum timeout)
+  # Increase memory and timeout for large files
+  memory_size     = 3008  # Maximum memory
+  timeout         = 900   # 15 minutes (maximum)
 
   environment {
     variables = {
