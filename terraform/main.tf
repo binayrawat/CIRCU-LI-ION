@@ -5,97 +5,37 @@ resource "random_string" "suffix" {
   upper   = false
 }
 
-# VPC Resources
+locals {
+  resource_prefix = "${var.project_name}-${var.environment}"
+  common_tags = {
+    Project     = var.project_name
+    Environment = var.environment
+    ManagedBy   = "terraform"
+  }
+}
+
+# VPC for Batch
 resource "aws_vpc" "main" {
   cidr_block           = "10.0.0.0/16"
   enable_dns_hostnames = true
   enable_dns_support   = true
 
-  tags = {
-    Name        = "recipe-vpc-dev"
-    Environment = "dev"
-    Project     = "CIRCU-LI-ION"
-  }
-}
-
-resource "aws_subnet" "batch" {
-  vpc_id            = aws_vpc.main.id
-  cidr_block        = "10.0.1.0/24"
-  availability_zone = "us-west-2a"
-
-  map_public_ip_on_launch = true
-
-  tags = {
-    Name        = "recipe-subnet-dev"
-    Environment = "dev"
-    Project     = "CIRCU-LI-ION"
-  }
-}
-
-resource "aws_internet_gateway" "main" {
-  vpc_id = aws_vpc.main.id
-
-  tags = {
-    Name        = "recipe-igw-dev"
-    Environment = "dev"
-    Project     = "CIRCU-LI-ION"
-  }
-}
-
-resource "aws_route_table" "main" {
-  vpc_id = aws_vpc.main.id
-
-  route {
-    cidr_block = "0.0.0.0/0"
-    gateway_id = aws_internet_gateway.main.id
-  }
-
-  tags = {
-    Name        = "recipe-rt-dev"
-    Environment = "dev"
-    Project     = "CIRCU-LI-ION"
-  }
-}
-
-resource "aws_route_table_association" "main" {
-  subnet_id      = aws_subnet.batch.id
-  route_table_id = aws_route_table.main.id
-}
-
-resource "aws_security_group" "batch" {
-  name        = "recipe-batch-sg-dev"
-  description = "Security group for Batch compute environment"
-  vpc_id      = aws_vpc.main.id
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  tags = {
-    Name        = "recipe-batch-sg-dev"
-    Environment = "dev"
-    Project     = "CIRCU-LI-ION"
-  }
+  tags = merge(local.common_tags, {
+    Name = "${local.resource_prefix}-vpc"
+  })
 }
 
 # S3 Bucket for recipe storage
 resource "aws_s3_bucket" "recipe_storage" {
-  bucket = "${var.bucket_name_prefix}-${var.environment}"
-  
-  tags = {
-    Environment = var.environment
-    Project     = "CIRCU-LI-ION"
-  }
+  bucket = "${var.storage_config.bucket_prefix}-${var.environment}-${random_string.suffix.result}"
+  tags   = local.common_tags
 }
 
 # Enable versioning
 resource "aws_s3_bucket_versioning" "versioning" {
   bucket = aws_s3_bucket.recipe_storage.id
   versioning_configuration {
-    status = "Enabled"
+    status = var.storage_config.versioning_enabled ? "Enabled" : "Disabled"
   }
 }
 
@@ -120,6 +60,26 @@ resource "aws_s3_bucket_lifecycle_configuration" "lifecycle" {
     transition {
       days          = 90
       storage_class = "STANDARD_IA"
+    }
+  }
+}
+
+# Add to existing S3 bucket configuration
+resource "aws_s3_bucket_lifecycle_configuration" "cost_optimization" {
+  bucket = aws_s3_bucket.recipe_storage.id
+
+  rule {
+    id     = "archive_old_recipes"
+    status = "Enabled"
+
+    transition {
+      days          = 90
+      storage_class = "STANDARD_IA"
+    }
+
+    transition {
+      days          = 180
+      storage_class = "GLACIER"
     }
   }
 }
@@ -277,18 +237,25 @@ resource "aws_ecr_repository" "processor" {
 
 # Batch compute environment
 resource "aws_batch_compute_environment" "compute" {
-  compute_environment_name = "recipe-compute-dev"
+  compute_environment_name = "${local.resource_prefix}-compute"
 
   compute_resources {
-    max_vcpus = 16
-    security_group_ids = [aws_security_group.batch.id]
-    subnets = [aws_subnet.batch.id]
-    type = "FARGATE"
+    max_vcpus = 4  # Limited for cost control
+    security_group_ids = [aws_security_group.batch_sg.id]
+    subnets = [aws_subnet.main.id]
+    type = "SPOT"  # Use SPOT for cost savings
+    
+    instance_type = [
+      "c5.large",  # Cost-effective compute
+      "m5.large"   # General purpose
+    ]
   }
 
   service_role = aws_iam_role.batch_service_role.arn
   type         = "MANAGED"
-  state        = "ENABLED"
+  depends_on   = [aws_iam_role_policy_attachment.batch_service_role]
+
+  tags = local.common_tags
 }
 
 # IAM Roles
@@ -381,13 +348,52 @@ resource "aws_iam_role_policy" "task_s3_policy" {
 
 # Batch job queue
 resource "aws_batch_job_queue" "processing_queue" {
-  name     = "recipe-processing-queue-dev"
+  name     = "${local.resource_prefix}-queue"
   state    = "ENABLED"
   priority = 1
-
   compute_environments = [
     aws_batch_compute_environment.compute.arn
   ]
+  tags = local.common_tags
+}
+
+# Subnet for Batch
+resource "aws_subnet" "main" {
+  vpc_id     = aws_vpc.main.id
+  cidr_block = "10.0.1.0/24"
+
+  tags = merge(local.common_tags, {
+    Name = "${local.resource_prefix}-subnet"
+  })
+}
+
+# Internet Gateway
+resource "aws_internet_gateway" "main" {
+  vpc_id = aws_vpc.main.id
+
+  tags = merge(local.common_tags, {
+    Name = "${local.resource_prefix}-igw"
+  })
+}
+
+# Route Table
+resource "aws_route_table" "main" {
+  vpc_id = aws_vpc.main.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.main.id
+  }
+
+  tags = merge(local.common_tags, {
+    Name = "${local.resource_prefix}-rt"
+  })
+}
+
+# Route Table Association
+resource "aws_route_table_association" "main" {
+  subnet_id      = aws_subnet.main.id
+  route_table_id = aws_route_table.main.id
 }
 
 locals {
@@ -449,4 +455,24 @@ resource "aws_batch_job_definition" "processor" {
   }
 
   depends_on = [aws_ecr_repository.processor]
+}
+
+# Lambda function for processing
+resource "aws_lambda_function" "processor" {
+  filename      = "../src/processor/lambda.zip"
+  function_name = "${local.resource_prefix}-processor"
+  role         = aws_iam_role.lambda_role.arn
+  handler      = "process.handler"
+  runtime      = var.lambda_runtime
+  timeout      = var.lambda_timeout
+
+  environment {
+    variables = {
+      OUTPUT_BUCKET = aws_s3_bucket.recipe_storage.id
+      ENVIRONMENT   = var.environment
+      LOG_LEVEL    = var.environment == "prod" ? "INFO" : "DEBUG"
+    }
+  }
+
+  tags = local.common_tags
 } 

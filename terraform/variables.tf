@@ -1,90 +1,126 @@
 variable "environment" {
-  description = "Environment name (e.g., dev, prod)"
+  description = "Environment name"
   type        = string
+  default     = "dev"
 }
 
 variable "aws_region" {
-  description = "AWS region to deploy resources"
+  description = "AWS region"
   type        = string
   default     = "us-west-2"
 }
 
-variable "vpc_id" {
-  description = "VPC ID where resources will be deployed"
+variable "project_name" {
+  description = "Project name for resource naming"
+  type        = string
+  default     = "recipe-manager"
+}
+
+variable "lambda_timeout" {
+  description = "Lambda function timeout in seconds"
+  type        = number
+  default     = 900
+}
+
+variable "lambda_runtime" {
+  description = "Lambda function runtime"
+  type        = string
+  default     = "python3.9"
+}
+
+variable "storage_config" {
+  description = "Storage configuration"
+  type = object({
+    bucket_prefix = string
+    versioning_enabled = bool
+    encryption_enabled = bool
+  })
+  default = {
+    bucket_prefix = "recipe-storage"
+    versioning_enabled = true
+    encryption_enabled = true
+  }
+}
+
+variable "tags" {
+  description = "Common tags for all resources"
+  type        = map(string)
+  default = {
+    Project     = "recipe-manager"
+    Environment = "dev"
+  }
+}
+
+# VPN Configuration
+variable "customer_gateway_asn" {
+  description = "ASN for customer gateway"
+  type        = number
+  default     = 65000
+}
+
+variable "customer_gateway_ip" {
+  description = "Customer gateway public IP"
   type        = string
 }
 
-variable "subnet_id" {
-  description = "Subnet ID for Batch compute environment"
-  type        = string
+# Cost Management
+variable "monthly_budget" {
+  description = "Monthly budget limit in USD"
+  type        = number
+  default     = 100  # Free tier consideration
 }
 
-variable "security_group_id" {
-  description = "Security group ID for Batch compute environment"
-  type        = string
+variable "alert_emails" {
+  description = "Email addresses for cost alerts"
+  type        = list(string)
+  default     = []
 }
 
-variable "customer_ip" {
-  description = "Customer gateway IP address for VPN connection"
-  type        = string
+# Edge Computing
+variable "edge_device_count" {
+  description = "Number of edge devices"
+  type        = number
+  default     = 1
 }
 
-# Optional: Configure these if you want to customize the solution
+variable "enable_vpn" {
+  description = "Enable VPN connection (additional costs)"
+  type        = bool
+  default     = false  # Disable by default
+}
+
 variable "batch_max_vcpus" {
-  description = "Maximum vCPUs for Batch compute environment"
+  description = "Maximum vCPUs for Batch environment"
   type        = number
-  default     = 16
+  default     = 2  # Reduced from 16 to minimize costs
 }
 
-variable "batch_memory" {
-  description = "Memory (in MiB) for Batch jobs"
-  type        = number
-  default     = 16384  # 16GB
-}
-
-variable "batch_vcpus" {
-  description = "vCPUs for Batch jobs"
-  type        = number
-  default     = 4
-}
-
-variable "bucket_name_prefix" {
-  description = "Prefix for S3 bucket name"
-  type        = string
-  default     = "recipe-storage"
-}
-
-variable "cognito_user_pool_name" {
-  description = "Name for the Cognito user pool"
-  type        = string
-  default     = "recipe-customers"
-}
-
-variable "account_id" {
-  description = "AWS Account ID"
-  type        = string
-}
-
-variable "existing_cloudfront_id" {
-  description = "ID of existing CloudFront distribution"
-  type        = string
-  default     = ""
-}
-
-variable "existing_ecr_image" {
-  description = "Existing ECR image URL"
-  type        = string
-  default     = "public.ecr.aws/amazonlinux/amazonlinux:latest"  # Default fallback image
-}
-
-variable "create_cloudfront" {
-  description = "Whether to create CloudFront distribution"
+variable "enable_spot" {
+  description = "Use spot instances for cost savings"
   type        = bool
   default     = true
 }
 
-variable "create_ecr" {
-  description = "Whether to create ECR repository"
+variable "enable_backups" {
+  description = "Enable AWS Backup"
   type        = bool
   default     = true
-} 
+}
+
+variable "backup_retention_days" {
+  description = "Number of days to retain backups"
+  type        = number
+  default     = 30
+}
+
+variable "kms_deletion_window" {
+  description = "KMS key deletion window in days"
+  type        = number
+  default     = 7
+}
+
+variable "vpc_cidr" {
+  description = "CIDR block for VPC"
+  type        = string
+  default     = "10.0.0.0/16"
+}

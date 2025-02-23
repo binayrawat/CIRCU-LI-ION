@@ -28,4 +28,29 @@ output "ecr_repository_name" {
   value       = aws_ecr_repository.processor.name
 }
 
+output "s3_bucket_name" {
+  description = "Name of the S3 bucket for recipe storage"
+  value       = aws_s3_bucket.recipe_storage.id
+}
+
+output "cloudfront_domain" {
+  description = "CloudFront distribution domain name"
+  value       = aws_cloudfront_distribution.recipe_cdn.domain_name
+}
+
+output "batch_job_queue" {
+  description = "AWS Batch job queue ARN"
+  value       = aws_batch_job_queue.processing_queue.arn
+}
+
+output "vpn_connection_id" {
+  description = "VPN Connection ID"
+  value       = var.enable_vpn ? aws_vpn_connection.main[0].id : null
+}
+
+output "monitoring_dashboard" {
+  description = "CloudWatch dashboard name"
+  value       = aws_cloudwatch_dashboard.main.dashboard_name
+}
+
 # ... other outputs ... 

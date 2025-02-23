@@ -1,63 +1,80 @@
-# CIRCU-LI-ION Robot Recipe Manager
+# Recipe Manager Infrastructure
 
 ## Overview
-Cloud infrastructure for managing robot automation recipes, enabling secure storage, processing, and distribution of recipe files.
+Secure and cost-effective infrastructure for managing robot automation recipes.
 
-## Architecture Components
-- S3 for secure storage with versioning
+## Core Components
+- S3 for secure storage
 - AWS Batch for large file processing
-- CloudFront for global distribution
-- IAM for access control
+- Basic monitoring and alerting
+
+## Features
+- ✅ Secure file storage with versioning
+- ✅ Large file processing (1GB+)
+- ✅ Cost monitoring and alerts
+- ✅ Basic security controls
 
 ## Prerequisites
 - AWS Account
-- AWS CLI configured
-- Terraform installed
-- Docker installed
-- Python 3.8+
+- Terraform >= 1.0.0
+- Python 3.9+
 
-## Deployment Steps
-
-### 1. Local Deployment
+## Quick Start
 ```bash
-# Install Python requirements
-pip install -r src/processor/requirements.txt
-pip install -r src/scripts/requirements.txt
-
-# Deploy infrastructure
+# Initialize Terraform
 cd terraform
 terraform init
-terraform plan
+
+# Deploy infrastructure
 terraform apply
-
-# Build and push Docker image
-cd ../src/processor
-docker build -t recipe-processor .
-aws ecr get-login-password --region us-west-2 | docker login --username AWS --password-stdin 202533497212.dkr.ecr.us-west-2.amazonaws.com
-docker tag recipe-processor:latest 202533497212.dkr.ecr.us-west-2.amazonaws.com/recipe-processor:latest
-docker push 202533497212.dkr.ecr.us-west-2.amazonaws.com/recipe-processor:latest
 ```
-
-### 2. Usage
-```bash
-# Upload a recipe
-cd ../scripts
-python upload_recipe.py --file recipe.json --bucket circu-li-ion-dev-us-west-2
-```
-
-## Security Features
-- S3 encryption at rest
-- HTTPS for transmission
-- IAM role-based access
-- Secure VPC configuration
 
 ## Cost Optimization
-- S3 Intelligent-Tiering
-- CloudFront caching
-- Batch for cost-effective processing
+- Uses S3 standard storage
+- Spot instances for processing
+- Basic monitoring included
+- Free tier compatible where possible
+
+## Security
+- S3 encryption enabled
+- Public access blocked
+- Security groups configured
+- IAM roles with minimal permissions
+
+## Monitoring
+- Basic CloudWatch metrics
+- Cost alerts
+- Processing job monitoring
+
+## Directory Structure
+```
+.
+├── src/
+│   └── processor/
+│       ├── process.py        # Processing logic
+│       └── requirements.txt  # Dependencies
+├── terraform/
+│   ├── main.tf              # Core infrastructure
+│   ├── variables.tf         # Variables
+│   ├── providers.tf         # AWS provider
+│   ├── outputs.tf           # Outputs
+│   ├── security.tf          # Security config
+│   └── monitoring.tf        # Basic monitoring
+└── README.md
+```
 
 ## Troubleshooting
-Common issues and solutions:
-1. Docker build fails: Check Docker installation and permissions
-2. Terraform errors: Verify AWS credentials and region
-3. Upload fails: Check S3 bucket permissions
+1. Job Failures
+   - Check CloudWatch logs
+   - Verify IAM permissions
+   - Check resource limits
+
+2. Performance Issues
+   - Monitor CPU/Memory metrics
+   - Check network connectivity
+   - Verify file sizes
+
+3. Cost Management
+   - Review budget alerts
+   - Check resource utilization
+   - Optimize storage tiers

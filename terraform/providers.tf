@@ -10,6 +10,8 @@ terraform {
     }
   }
   
+  required_version = ">= 1.0.0"
+  
   # If you want to use remote state, uncomment and configure this:
   # backend "s3" {
   #   bucket = "your-terraform-state-bucket"
@@ -19,7 +21,15 @@ terraform {
 }
 
 provider "aws" {
-  region = "us-west-2"
+  region = var.aws_region
+
+  default_tags {
+    tags = {
+      Project     = var.project_name
+      Environment = var.environment
+      ManagedBy   = "terraform"
+    }
+  }
 }
 
 provider "random" {} 
