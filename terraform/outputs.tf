@@ -23,4 +23,9 @@ output "ecr_repository_url" {
   description = "The URL of the ECR repository"
 }
 
+output "ecr_repository_name" {
+  description = "Name of the ECR repository"
+  value       = aws_ecr_repository.processor.name
+}
+
 # ... other outputs ... 
