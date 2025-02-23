@@ -34,6 +34,9 @@ class FileSplitter:
                 })
             
             return chunks_metadata
+            
+        except Exception as e:
+            raise Exception(f"Error splitting file: {str(e)}")
 
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     try:
