@@ -1,3 +1,7 @@
+provider "aws" {
+  region = var.aws_region
+}
+
 # Random string for unique names
 resource "random_string" "suffix" {
   length  = 8
@@ -475,4 +479,97 @@ resource "aws_lambda_function" "processor" {
   }
 
   tags = local.common_tags
+}
+
+# S3 bucket for file processing
+resource "aws_s3_bucket" "processing_bucket" {
+  bucket = "${var.project_name}-${var.environment}-processing"
+}
+
+# Enable versioning
+resource "aws_s3_bucket_versioning" "processing_bucket_versioning" {
+  bucket = aws_s3_bucket.processing_bucket.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+# Lambda functions
+resource "aws_lambda_function" "split_file" {
+  filename         = "../src/processor/split_large_file.zip"
+  function_name    = "${var.project_name}-${var.environment}-split-file"
+  role            = aws_iam_role.lambda_role.arn
+  handler         = "split_large_file.lambda_handler"
+  runtime         = "python3.9"
+  timeout         = 900  # 15 minutes
+  memory_size     = 1024
+
+  environment {
+    variables = {
+      STEP_FUNCTION_ARN = aws_sfn_state_machine.processing_workflow.arn
+    }
+  }
+}
+
+resource "aws_lambda_function" "zip_chunk" {
+  filename         = "../src/processor/stream_zip_chunk.zip"
+  function_name    = "${var.project_name}-${var.environment}-zip-chunk"
+  role            = aws_iam_role.lambda_role.arn
+  handler         = "stream_zip_chunk.lambda_handler"
+  runtime         = "python3.9"
+  timeout         = 900
+  memory_size     = 1024
+}
+
+resource "aws_lambda_function" "merge_files" {
+  filename         = "../src/processor/stream_merge.zip"
+  function_name    = "${var.project_name}-${var.environment}-merge-files"
+  role            = aws_iam_role.lambda_role.arn
+  handler         = "stream_merge.lambda_handler"
+  runtime         = "python3.9"
+  timeout         = 900
+  memory_size     = 1024
+}
+
+# Step Functions state machine
+resource "aws_sfn_state_machine" "processing_workflow" {
+  name     = "${var.project_name}-${var.environment}-workflow"
+  role_arn = aws_iam_role.step_function_role.arn
+
+  definition = jsonencode({
+    StartAt = "ProcessChunks"
+    States = {
+      ProcessChunks = {
+        Type = "Map"
+        ItemsPath = "$.chunks_metadata"
+        Iterator = {
+          StartAt = "ZipChunk"
+          States = {
+            ZipChunk = {
+              Type = "Task"
+              Resource = aws_lambda_function.zip_chunk.arn
+              End = true
+            }
+          }
+        }
+        Next = "MergeFiles"
+      }
+      MergeFiles = {
+        Type = "Task"
+        Resource = aws_lambda_function.merge_files.arn
+        End = true
+      }
+    }
+  })
+}
+
+# S3 trigger for split_file Lambda
+resource "aws_s3_bucket_notification" "bucket_notification" {
+  bucket = aws_s3_bucket.processing_bucket.id
+
+  lambda_function {
+    lambda_function_arn = aws_lambda_function.split_file.arn
+    events              = ["s3:ObjectCreated:*"]
+    filter_prefix       = "uploads/"
+  }
 } 

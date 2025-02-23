@@ -1,22 +1,10 @@
 import pytest
-from process import RecipeProcessor
-import os
 import boto3
+import json
 from moto import mock_s3
-
-@pytest.fixture(autouse=True)
-def env_setup():
-    """Setup test environment variables"""
-    os.environ['OUTPUT_BUCKET'] = 'test-bucket'
-    os.environ['ENVIRONMENT'] = 'test'
-    yield
-    # Cleanup
-    os.environ.pop('OUTPUT_BUCKET', None)
-    os.environ.pop('ENVIRONMENT', None)
-
-@pytest.fixture
-def processor():
-    return RecipeProcessor()
+from split_large_file import FileSplitter, lambda_handler as split_handler
+from stream_zip_chunk import StreamingZipper, lambda_handler as zip_handler
+from stream_merge import StreamingMerger, lambda_handler as merge_handler
 
 @pytest.fixture
 def mock_s3_bucket():
@@ -25,26 +13,47 @@ def mock_s3_bucket():
         s3.create_bucket(Bucket='test-bucket')
         yield s3
 
-def test_process_large_file(processor, tmp_path):
-    # Create test file
-    input_file = tmp_path / "test.txt"
-    input_file.write_bytes(b"test" * 1000)
-    
-    output_file = tmp_path / "output.zip"
-    
-    # Process file
-    processor.process_large_file(str(input_file), str(output_file))
-    
-    # Verify output
-    assert output_file.exists()
-    assert output_file.stat().st_size > 0
+@pytest.fixture
+def mock_event():
+    return {
+        'Records': [{
+            's3': {
+                'bucket': {'name': 'test-bucket'},
+                'object': {'key': 'uploads/test.txt'}
+            }
+        }]
+    }
 
-def test_upload_file(processor, mock_s3_bucket, tmp_path):
-    test_file = tmp_path / "test.txt"
-    test_file.write_text("test")
+def test_file_splitter(mock_s3_bucket):
+    # Create test file in S3
+    mock_s3_bucket.put_object(
+        Bucket='test-bucket',
+        Key='uploads/test.txt',
+        Body=b'test' * 1000
+    )
     
-    processor.upload_file(str(test_file), "test.txt")
+    splitter = FileSplitter()
+    chunks = splitter.split_file('test-bucket', 'uploads/test.txt')
     
-    # Verify upload
-    objects = mock_s3_bucket.list_objects(Bucket='test-bucket')
-    assert len(objects.get('Contents', [])) == 1 
+    assert len(chunks) > 0
+    assert all('chunk_number' in chunk for chunk in chunks)
+
+def test_streaming_zipper(mock_s3_bucket):
+    chunk_metadata = {
+        'chunk_number': 0,
+        'start_byte': 0,
+        'end_byte': 99,
+        'source_key': 'uploads/test.txt'
+    }
+    
+    # Create test file
+    mock_s3_bucket.put_object(
+        Bucket='test-bucket',
+        Key='uploads/test.txt',
+        Body=b'test' * 25
+    )
+    
+    zipper = StreamingZipper()
+    zip_key = zipper.stream_zip_chunk('test-bucket', chunk_metadata)
+    
+    assert zip_key.startswith('zipped_chunks/') 
