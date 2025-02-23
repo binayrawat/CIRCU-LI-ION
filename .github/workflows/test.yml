@@ -11,6 +11,10 @@ jobs:
     name: 'Test'
     runs-on: ubuntu-latest
 
+    env:
+      OUTPUT_BUCKET: 'test-bucket'
+      ENVIRONMENT: 'test'
+
     steps:
     - uses: actions/checkout@v3
 
@@ -23,11 +27,12 @@ jobs:
       run: |
         cd src/processor
         pip install -r requirements.txt
+        pip install -r requirements-dev.txt
 
     - name: Run Python tests
       run: |
         cd src/processor
-        python -m pytest tests/
+        python -m pytest tests/ -v
 
     - name: Setup Terraform
       uses: hashicorp/setup-terraform@v2

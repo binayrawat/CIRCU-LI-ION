@@ -4,6 +4,16 @@ import os
 import boto3
 from moto import mock_s3
 
+@pytest.fixture(autouse=True)
+def env_setup():
+    """Setup test environment variables"""
+    os.environ['OUTPUT_BUCKET'] = 'test-bucket'
+    os.environ['ENVIRONMENT'] = 'test'
+    yield
+    # Cleanup
+    os.environ.pop('OUTPUT_BUCKET', None)
+    os.environ.pop('ENVIRONMENT', None)
+
 @pytest.fixture
 def processor():
     return RecipeProcessor()
