@@ -195,14 +195,13 @@ resource "aws_ecr_repository" "processor" {
 
 # Batch compute environment
 resource "aws_batch_compute_environment" "compute" {
-  compute_environment_name = "recipe-compute-${var.environment}"
+  compute_environment_name = "recipe-compute-dev"
 
   compute_resources {
-    max_vcpus = var.batch_max_vcpus
-    type      = "FARGATE"
-    
-    security_group_ids = [var.security_group_id]
-    subnets           = [var.subnet_id]
+    max_vcpus = 16
+    security_group_ids = [aws_security_group.batch.id]
+    subnets = [aws_subnet.batch.id]
+    type = "FARGATE"
   }
 
   service_role = aws_iam_role.batch_service_role.arn
@@ -300,52 +299,46 @@ resource "aws_iam_role_policy" "task_s3_policy" {
 
 # Batch job queue
 resource "aws_batch_job_queue" "processing_queue" {
-  name = "recipe-processing-queue-${var.environment}"
-  state = "ENABLED"
+  name     = "recipe-processing-queue-dev"
+  state    = "ENABLED"
   priority = 1
 
-  compute_environment_order {
-    order = 0
-    compute_environment = aws_batch_compute_environment.compute.arn
-  }
+  compute_environments = [
+    aws_batch_compute_environment.compute.arn
+  ]
 }
 
 # Batch Job Definition
 resource "aws_batch_job_definition" "processor" {
-  name = "recipe-processor-${var.environment}"
+  name = "recipe-processor-dev"
   type = "container"
   platform_capabilities = ["FARGATE"]
+  propagate_tags = true
 
   container_properties = jsonencode({
-    image = "${aws_ecr_repository.processor.repository_url}:latest"
-    
+    image = var.create_ecr ? "${aws_ecr_repository.processor[0].repository_url}:latest" : null
     fargatePlatformConfiguration = {
       platformVersion = "LATEST"
     }
-    
     resourceRequirements = [
       {
         type  = "VCPU"
-        value = tostring(var.batch_vcpus)
+        value = "1"
       },
       {
         type  = "MEMORY"
-        value = tostring(var.batch_memory)
+        value = "2048"
       }
     ]
-    
-    environment = [
-      {
-        name  = "AWS_REGION"
-        value = var.aws_region
-      },
-      {
-        name  = "BUCKET_NAME"
-        value = aws_s3_bucket.recipe_storage.id
-      }
-    ]
-    
     executionRoleArn = aws_iam_role.task_role.arn
     jobRoleArn       = aws_iam_role.task_role.arn
+    networkConfiguration = {
+      assignPublicIp = "ENABLED"
+    }
   })
+
+  tags = {
+    Environment = "dev"
+    Project     = "CIRCU-LI-ION"
+  }
 } 
