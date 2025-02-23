@@ -132,12 +132,27 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
 
+      - name: Debug directory structure
+        run: |
+          echo "Current directory: $(pwd)"
+          ls -la
+          echo "Repository contents:"
+          find . -type f
+
       - name: Build and push Docker image
         run: |
-          cd src/processor
+          # Find the Dockerfile location
+          DOCKERFILE_PATH=$(find . -name Dockerfile)
+          if [ -z "$DOCKERFILE_PATH" ]; then
+            echo "Error: Dockerfile not found"
+            exit 1
+          fi
+          
+          DOCKER_CONTEXT=$(dirname "$DOCKERFILE_PATH")
+          echo "Building from context: $DOCKER_CONTEXT"
           
           # Build the image
-          docker build -t ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }} .
+          docker build -t ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }} "$DOCKER_CONTEXT"
           docker tag ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }} \
                     ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest
           
