@@ -100,56 +100,66 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Get AWS Account ID
-        id: get-account
+      - name: Get AWS Account ID and Set ECR Registry
+        id: ecr-setup
         run: |
+          # Get AWS Account ID
           AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query "Account" --output text)
-          echo "account_id=$AWS_ACCOUNT_ID" >> $GITHUB_OUTPUT
           echo "AWS_ACCOUNT_ID=$AWS_ACCOUNT_ID" >> $GITHUB_ENV
+          
+          # Set ECR Registry URL
+          ECR_REGISTRY="$AWS_ACCOUNT_ID.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com"
+          echo "ECR_REGISTRY=$ECR_REGISTRY" >> $GITHUB_ENV
+          
+          echo "Account ID: $AWS_ACCOUNT_ID"
+          echo "ECR Registry: $ECR_REGISTRY"
 
-      - name: Create ECR Repository
+      - name: Create and Verify ECR Repository
         run: |
-          # Try to create the repository (ignore if it already exists)
-          aws ecr create-repository \
-            --repository-name ${{ env.ECR_REPOSITORY }} \
-            --image-scanning-configuration scanOnPush=true \
-            --encryption-configuration encryptionType=AES256 \
-            2>/dev/null || true
+          echo "Creating/verifying ECR repository: ${{ env.ECR_REPOSITORY }}"
+          
+          # Check if repository exists
+          if ! aws ecr describe-repositories --repository-names ${{ env.ECR_REPOSITORY }} 2>/dev/null; then
+            echo "Repository does not exist. Creating..."
+            aws ecr create-repository \
+              --repository-name ${{ env.ECR_REPOSITORY }} \
+              --image-scanning-configuration scanOnPush=true \
+              --encryption-configuration encryptionType=AES256
+          else
+            echo "Repository already exists"
+          fi
           
           # Verify repository exists
+          echo "Verifying repository..."
           aws ecr describe-repositories --repository-names ${{ env.ECR_REPOSITORY }}
-          
-          # Set the full repository URI
-          ECR_REGISTRY="${{ steps.get-account.outputs.account_id }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com"
-          echo "ECR_REGISTRY=$ECR_REGISTRY" >> $GITHUB_ENV
 
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
 
-      - name: Build and push Docker image
+      - name: Build Docker image
         run: |
           cd src/processor
-          
-          # Debug information
-          echo "Building for:"
-          echo "Registry: ${{ env.ECR_REGISTRY }}"
-          echo "Repository: ${{ env.ECR_REPOSITORY }}"
-          echo "Full image name: ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}"
-          
-          # Build the image
+          echo "Building image: ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}"
           docker build -t ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }} .
           docker tag ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }} \
                     ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest
-          
-          # Push the image
-          echo "Pushing to ECR..."
+
+      - name: Verify ECR Repository Before Push
+        run: |
+          echo "Verifying ECR repository before push..."
+          aws ecr describe-repositories --repository-names ${{ env.ECR_REPOSITORY }}
+          echo "Repository verified successfully"
+
+      - name: Push Docker image
+        run: |
+          echo "Pushing image to ECR..."
           docker push ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
           docker push ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest
 
       - name: Verify Image Push
         run: |
-          # List images in repository
+          echo "Verifying pushed images..."
           aws ecr describe-images \
             --repository-name ${{ env.ECR_REPOSITORY }} \
             --query 'imageDetails[*].imageTags[*]' \
