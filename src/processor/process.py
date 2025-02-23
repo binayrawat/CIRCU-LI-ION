@@ -36,8 +36,8 @@ def process_recipe(bucket, input_key, output_key):
         # Upload result with correct content type
         logger.info(f"Uploading result to {output_key}")
         s3.upload_file(
-            '/tmp/output.zip', 
-            bucket, 
+            '/tmp/output.zip',
+            bucket,
             output_key,
             ExtraArgs={'ContentType': 'application/zip'}
         )
