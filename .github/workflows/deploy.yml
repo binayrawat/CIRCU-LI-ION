@@ -128,17 +128,18 @@ jobs:
           echo "Task role doesn't exist"
 
       - name: Terraform Plan
+        id: plan
         run: terraform plan -out=tfplan
 
       - name: Terraform Apply
         if: github.ref == 'refs/heads/main'
+        id: apply
         run: terraform apply -auto-approve tfplan
 
-      # Use environment files instead of set-output
-      - name: Set outputs
-        run: |
-          echo "plan_exit_code=$?" >> $GITHUB_ENV
-          echo "terraform_plan=$(terraform show -no-color tfplan)" >> $GITHUB_ENV
+      # Remove the problematic output steps
+      - name: Cleanup
+        if: always()
+        run: rm -f tfplan || true
 
   container:
     name: 'Build & Deploy Container'
