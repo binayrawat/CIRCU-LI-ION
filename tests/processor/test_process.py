@@ -1,7 +1,15 @@
 import pytest
-import os
+import boto3
+from moto import mock_s3
 from src.processor.process import process_recipe
 import zipfile
+
+@pytest.fixture
+def s3():
+    """Create a mock S3 client"""
+    with mock_s3():
+        s3 = boto3.client('s3')
+        yield s3
 
 def test_process_recipe(s3):
     """Test recipe processing"""
@@ -31,8 +39,11 @@ def test_process_recipe(s3):
     # Verify
     assert result == True
     
-    # Check if output exists and has correct content type
+    # Verify output file exists
     response = s3.get_object(Bucket=bucket, Key=output_key)
+    assert response['Body'].read().decode('utf-8') == '{"test": "data"}'
+    
+    # Check if output exists and has correct content type
     assert response['ContentType'] == 'application/zip'
     
     # Verify it's actually a ZIP file
