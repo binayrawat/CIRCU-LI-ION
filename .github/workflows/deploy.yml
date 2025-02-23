@@ -106,53 +106,44 @@ jobs:
       - name: Terraform Init
         run: terraform init
 
-      # Import existing resources before planning
       - name: Import existing resources
         run: |
-          # Import AWS Batch resources
-          aws batch describe-compute-environments --compute-environments recipe-compute-dev && \
-          terraform import aws_batch_compute_environment.compute recipe-compute-dev || \
-          echo "Compute environment doesn't exist"
+          terraform import aws_batch_compute_environment.compute recipe-compute-dev || true
+          terraform import aws_batch_job_queue.processing_queue recipe-processing-queue-dev || true
+          terraform import aws_s3_bucket.recipe_storage circu-li-ion-dev || true
+          terraform import aws_iam_role.batch_service_role recipe-batch-service-dev || true
+          terraform import aws_iam_role.task_role recipe-task-role-dev || true
           
-          aws batch describe-job-queues --job-queues recipe-processing-queue-dev && \
-          terraform import aws_batch_job_queue.processing_queue recipe-processing-queue-dev || \
-          echo "Job queue doesn't exist"
+          # Import CloudFront and ECR if they exist
+          EXISTING_DIST=$(aws cloudfront list-distributions --query "DistributionList.Items[?Comment=='Recipe CDN'].Id" --output text)
+          if [ ! -z "$EXISTING_DIST" ]; then
+            terraform import aws_cloudfront_distribution.recipe_cdn $EXISTING_DIST || true
+          fi
           
-          # Import other resources
-          aws s3 ls s3://circu-li-ion-dev && \
-          terraform import aws_s3_bucket.recipe_storage circu-li-ion-dev || \
-          echo "Bucket doesn't exist"
-          
-          aws iam get-role --role-name recipe-batch-service-dev && \
-          terraform import aws_iam_role.batch_service_role recipe-batch-service-dev || \
-          echo "Batch role doesn't exist"
-          
-          aws iam get-role --role-name recipe-task-role-dev && \
-          terraform import aws_iam_role.task_role recipe-task-role-dev || \
-          echo "Task role doesn't exist"
+          EXISTING_ECR=$(aws ecr describe-repositories --query "repositories[?contains(repositoryName, 'recipe-processor-dev')].repositoryName" --output text)
+          if [ ! -z "$EXISTING_ECR" ]; then
+            terraform import aws_ecr_repository.processor $EXISTING_ECR || true
+            echo "EXISTING_ECR=$EXISTING_ECR" >> $GITHUB_ENV
+          fi
 
       - name: Terraform Plan
         id: plan
-        run: |
-          # Prevent recreation of CloudFront and ECR
-          terraform plan -refresh-only -out=tfplan-refresh
-          terraform apply -auto-approve tfplan-refresh
-          terraform plan -out=tfplan
+        run: terraform plan -out=tfplan
 
-      - name: Terraform Apply and Get Outputs
+      - name: Terraform Apply
         if: github.ref == 'refs/heads/main'
         id: apply
         run: |
           terraform apply -auto-approve tfplan
-          # Get ECR repository name directly
-          REPO_NAME=$(terraform output -raw ecr_repository_url | sed 's/.*\///')
-          # Verify the output
-          if [[ ! "$REPO_NAME" =~ ^recipe-processor-dev-[a-z0-9]+$ ]]; then
-            echo "Error: Invalid repository name format: $REPO_NAME"
-            exit 1
+          
+          # Get ECR repository name
+          if [ ! -z "$EXISTING_ECR" ]; then
+            echo "ECR_REPOSITORY=$EXISTING_ECR" >> $GITHUB_ENV
+          else
+            REPO_URL=$(terraform output -raw ecr_repository_url)
+            REPO_NAME=$(echo "$REPO_URL" | awk -F'/' '{print $NF}')
+            echo "ECR_REPOSITORY=$REPO_NAME" >> $GITHUB_ENV
           fi
-          # Set environment variable
-          echo "ECR_REPOSITORY=$REPO_NAME" >> $GITHUB_ENV
 
       - name: Login to Amazon ECR
         if: github.ref == 'refs/heads/main'
@@ -164,9 +155,9 @@ jobs:
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
+        working-directory: ../src/processor
         run: |
-          cd ../src/processor
-          echo "Building for repository: ${{ env.ECR_REPOSITORY }}"
+          echo "Using repository: ${{ env.ECR_REPOSITORY }}"
           docker build -t $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG .
           docker tag $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:latest
           docker push $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG
@@ -174,8 +165,7 @@ jobs:
 
       - name: Cleanup
         if: always()
-        run: |
-          rm -f tfplan tfplan-refresh || true
+        run: rm -f tfplan || true
 
   container:
     name: 'Build & Deploy Container'
