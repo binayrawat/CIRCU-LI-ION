@@ -1,6 +1,7 @@
 import pytest
 import os
 from src.processor.process import process_recipe
+import zipfile
 
 def test_process_recipe(s3):
     """Test recipe processing"""
@@ -30,9 +31,13 @@ def test_process_recipe(s3):
     # Verify
     assert result == True
     
-    # Check if output exists
+    # Check if output exists and has correct content type
     response = s3.get_object(Bucket=bucket, Key=output_key)
     assert response['ContentType'] == 'application/zip'
+    
+    # Verify it's actually a ZIP file
+    s3.download_file(bucket, output_key, '/tmp/test.zip')
+    assert zipfile.is_zipfile('/tmp/test.zip')
 
 def test_process_recipe_error(s3):
     """Test error handling"""
