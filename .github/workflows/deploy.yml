@@ -98,137 +98,62 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-west-2
+          aws-region: ${{ env.AWS_REGION }}
 
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v1
-
-      - name: Check Existing Resources
-        id: check-resources
+      - name: Get AWS Account ID
+        id: get-account
         run: |
-          # Check CloudFront
-          CF_ID=$(aws cloudfront list-distributions --query "DistributionList.Items[?contains(Comment, 'Recipe CDN')].Id" --output text)
-          if [ ! -z "$CF_ID" ] && [ "$CF_ID" != "null" ]; then
-            echo "cloudfront_id=$CF_ID" >> $GITHUB_OUTPUT
-            echo "create_cloudfront=false" >> override.tfvars
-            echo "existing_cloudfront_id=\"$CF_ID\"" >> override.tfvars
-          else
-            echo "create_cloudfront=true" >> override.tfvars
-          fi
-          
-          # Check ECR
-          ECR_REPO=$(aws ecr describe-repositories --query "repositories[?contains(repositoryName, 'recipe-processor-dev')].repositoryUri" --output text)
-          if [ ! -z "$ECR_REPO" ] && [ "$ECR_REPO" != "null" ]; then
-            echo "ecr_repository=${ECR_REPO##*/}" >> $GITHUB_OUTPUT
-            echo "create_ecr=false" >> override.tfvars
-            echo "existing_ecr_image=\"${ECR_REPO}:latest\"" >> override.tfvars
-            echo "ECR_REPOSITORY=${ECR_REPO##*/}" >> $GITHUB_ENV
-          else
-            echo "create_ecr=true" >> override.tfvars
-            echo "existing_ecr_image=\"public.ecr.aws/amazonlinux/amazonlinux:latest\"" >> override.tfvars
-          fi
-          
-          cat override.tfvars
-
-      - name: Terraform Init
-        run: terraform init
-
-      - name: Import Existing Resources
-        run: |
-          # Import core resources
-          terraform import aws_batch_compute_environment.compute recipe-compute-dev || true
-          terraform import aws_batch_job_queue.processing_queue recipe-processing-queue-dev || true
-          terraform import aws_s3_bucket.recipe_storage circu-li-ion-dev || true
-          terraform import aws_iam_role.batch_service_role recipe-batch-service-dev || true
-          terraform import aws_iam_role.task_role recipe-task-role-dev || true
-          
-          # Import CloudFront if exists
-          if [ ! -z "${{ steps.check-resources.outputs.cloudfront_id }}" ]; then
-            terraform import aws_cloudfront_distribution.recipe_cdn ${{ steps.check-resources.outputs.cloudfront_id }} || true
-          fi
-          
-          # Import ECR if exists
-          if [ ! -z "${{ steps.check-resources.outputs.ecr_repository }}" ]; then
-            terraform import aws_ecr_repository.processor ${{ steps.check-resources.outputs.ecr_repository }} || true
-          fi
-
-      - name: Terraform Plan
-        id: plan
-        run: |
-          # Use override variables if they exist
-          if [ -f "override.tfvars" ]; then
-            terraform plan -var-file="override.tfvars" -out=tfplan
-          else
-            terraform plan -out=tfplan
-          fi
-
-      - name: Terraform Apply
-        id: apply
-        if: github.ref == 'refs/heads/main'
-        run: |
-          terraform apply -auto-approve tfplan
-          
-          # Export ECR repository info if created
-          if [ "${{ steps.check-resources.outputs.ecr_repository }}" == "" ]; then
-            REPO_URL=$(terraform output -json | jq -r '.ecr_repository_url.value // empty')
-            if [ ! -z "$REPO_URL" ]; then
-              REPO_NAME=$(echo "$REPO_URL" | awk -F'/' '{print $NF}')
-              echo "ECR_REPOSITORY=$REPO_NAME" >> $GITHUB_ENV
-              echo "ecr_repository=$REPO_NAME" >> $GITHUB_OUTPUT
-            fi
-          fi
+          AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query "Account" --output text)
+          echo "account_id=$AWS_ACCOUNT_ID" >> $GITHUB_OUTPUT
+          echo "AWS_ACCOUNT_ID=$AWS_ACCOUNT_ID" >> $GITHUB_ENV
 
       - name: Create ECR Repository
-        if: github.ref == 'refs/heads/main'
-        id: create-ecr
         run: |
-          # Get AWS account ID
-          AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query "Account" --output text)
-          AWS_REGION="us-west-2"
-          REPO_NAME="recipe-processor-dev"
+          # Try to create the repository (ignore if it already exists)
+          aws ecr create-repository \
+            --repository-name ${{ env.ECR_REPOSITORY }} \
+            --image-scanning-configuration scanOnPush=true \
+            --encryption-configuration encryptionType=AES256 \
+            2>/dev/null || true
           
-          # Create repository if it doesn't exist
-          if ! aws ecr describe-repositories --repository-names $REPO_NAME 2>/dev/null; then
-            echo "Creating ECR repository $REPO_NAME"
-            aws ecr create-repository \
-              --repository-name $REPO_NAME \
-              --image-scanning-configuration scanOnPush=true \
-              --tags Key=Environment,Value=dev
-          fi
+          # Verify repository exists
+          aws ecr describe-repositories --repository-names ${{ env.ECR_REPOSITORY }}
           
-          # Set environment variables
-          echo "ECR_REPOSITORY=$REPO_NAME" >> $GITHUB_ENV
-          echo "AWS_ACCOUNT_ID=$AWS_ACCOUNT_ID" >> $GITHUB_ENV
-          echo "ECR_REGISTRY=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com" >> $GITHUB_ENV
+          # Set the full repository URI
+          ECR_REGISTRY="${{ steps.get-account.outputs.account_id }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com"
+          echo "ECR_REGISTRY=$ECR_REGISTRY" >> $GITHUB_ENV
 
       - name: Login to Amazon ECR
-        if: github.ref == 'refs/heads/main'
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
 
       - name: Build and push Docker image
-        if: github.ref == 'refs/heads/main'
         run: |
-          cd $GITHUB_WORKSPACE/src/processor
+          cd src/processor
           
           # Debug information
-          echo "Building image for:"
+          echo "Building for:"
           echo "Registry: ${{ env.ECR_REGISTRY }}"
           echo "Repository: ${{ env.ECR_REPOSITORY }}"
-          echo "Tag: ${{ github.sha }}"
+          echo "Full image name: ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}"
           
-          # Build and tag the image
+          # Build the image
           docker build -t ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }} .
-          docker tag ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }} ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest
+          docker tag ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }} \
+                    ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest
           
           # Push the image
-          echo "Pushing image to ECR..."
+          echo "Pushing to ECR..."
           docker push ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
           docker push ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest
 
-      - name: Cleanup
-        if: always()
-        run: rm -f tfplan override.tfvars || true
+      - name: Verify Image Push
+        run: |
+          # List images in repository
+          aws ecr describe-images \
+            --repository-name ${{ env.ECR_REPOSITORY }} \
+            --query 'imageDetails[*].imageTags[*]' \
+            --output text
 
   container:
     name: 'Build & Deploy Container'
