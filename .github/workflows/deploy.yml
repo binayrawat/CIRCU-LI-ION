@@ -109,10 +109,14 @@ jobs:
       # Import existing resources before planning
       - name: Import existing resources
         run: |
-          # Import AWS Batch Compute Environment if it exists
+          # Import AWS Batch resources
           aws batch describe-compute-environments --compute-environments recipe-compute-dev && \
           terraform import aws_batch_compute_environment.compute recipe-compute-dev || \
           echo "Compute environment doesn't exist"
+          
+          aws batch describe-job-queues --job-queues recipe-processing-queue-dev && \
+          terraform import aws_batch_job_queue.processing_queue recipe-processing-queue-dev || \
+          echo "Job queue doesn't exist"
           
           # Import other resources
           aws s3 ls s3://circu-li-ion-dev && \
