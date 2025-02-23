@@ -1,79 +1,88 @@
-# CIRCU LI-ION Architecture
-=========================
+# CIRCU-LI-ION Architecture
 
-                     ┌──────────────┐
-                     │   Internet   │
-                     └──────┬───────┘
-                            │
-                            ▼
-┌──────────┐         ┌──────────────┐         ┌──────────┐
-│          │         │  CloudFront  │         │          │
-│ Customers│◄───────►│ Distribution │◄───────►│ Global   │
-│          │   HTTPS │              │         │ Access   │
-└──────────┘         └──────┬───────┘         └──────────┘
-                            │
-                            ▼
-┌──────────┐         ┌──────────────┐         ┌──────────┐
-│          │   VPN   │  S3 Bucket   │         │ Lambda   │
-│On-Premise│◄───────►│  Versioned   │───────►│ Function │
-│          │         │              │         │          │
-└──────────┘         └──────────────┘         └──────────┘
+## System Overview
+The CIRCU-LI-ION system provides a secure, scalable infrastructure for managing robot automation recipes.
 
+## Components
 
-Component Details:
-================
+### 1. Storage Layer (AWS S3)
+- Secure storage for recipes with versioning
+- Handles large files (1+ GB) and small configuration files
+- Encryption at rest using AES-256
+- Lifecycle policies for cost optimization
 
-1. CUSTOMER ACCESS
-   - Global distribution via CloudFront
-   - HTTPS encryption
-   - Caching enabled
+### 2. Authentication Layer (Amazon Cognito)
+- Customer authentication and authorization
+- Secure access control to recipes
+- Integration with CloudFront for distribution
 
-2. STORAGE (S3)
-   - Versioning enabled
-   - Encryption at rest
+### 3. Processing Layer (AWS Batch)
+- Containerized processing for recipe consolidation
+- Scalable compute resources
+- Cost-effective processing using Fargate
+
+### 4. Distribution Layer (CloudFront)
+- Global content delivery network
+- Edge caching for improved performance
+- HTTPS encryption for secure transmission
+- Integration with Cognito for authentication
+
+### 5. Network Layer (VPN)
+- Secure connection to on-premises network
+- IPSec encryption for data transmission
+- Redundant VPN tunnels for high availability
+
+## Security Features
+1. Data at Rest:
+   - S3 encryption using AES-256
+   - Versioning for change tracking
+   - Access controls via IAM
+
+2. Data in Transit:
+   - HTTPS for all API calls
+   - VPN for on-premises connection
+   - CloudFront SSL/TLS
+
+3. Authentication:
+   - Cognito user pools
+   - IAM roles and policies
+   - Secure token management
+
+## Cost Optimization
+1. Storage:
+   - S3 Intelligent-Tiering
    - Lifecycle policies
-   - Access controls
+   - Version cleanup policies
 
-3. PROCESSING (Lambda)
-   - Automatic triggering
-   - File consolidation
-   - ZIP creation
-   - Error handling
+2. Computing:
+   - Fargate spot instances
+   - Auto-scaling
+   - Pay-per-use model
 
-4. SECURITY
-   - VPN connection
-   - IAM roles
-   - Encryption in transit
-   - Network security
+3. Distribution:
+   - CloudFront caching
+   - Regional data transfer
+   - Edge computing optimization
 
+## Data Flow
+1. Customer Authentication
+   - Customer logs in via Cognito
+   - Receives temporary credentials
 
-Data Flow:
-=========
+2. Recipe Upload
+   - Authenticated upload to S3
+   - Version control maintained
 
-1. Upload Flow:
-   On-Premise ──► VPN ──► S3 Bucket
+3. Processing
+   - AWS Batch processes recipes
+   - Creates consolidated archives
 
-2. Processing Flow:
-   S3 Bucket ──► Lambda ──► S3 Bucket (Processed)
+4. Distribution
+   - CloudFront serves files globally
+   - Edge caching improves performance
 
-3. Distribution Flow:
-   S3 Bucket ──► CloudFront ──► Customers
-
-
-Security Measures:
-================
-
-1. Network Security:
-   - VPN encryption
-   - HTTPS everywhere
-   - Private subnets
-
-2. Data Security:
-   - S3 encryption
-   - IAM policies
-   - Access logging
-
-3. Monitoring:
-   - CloudWatch
-   - CloudTrail
-   - S3 access logs 
+## Monitoring and Logging
+- CloudWatch metrics
+- S3 access logs
+- VPN connection monitoring
+- Batch job statistics 

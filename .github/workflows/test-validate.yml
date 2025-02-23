@@ -1,0 +1,43 @@
+name: Test & Validate
+
+on:
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: 'Run Tests & Validation'
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v2
+    
+    - name: Setup Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.9'
+    
+    - name: Install Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pytest pytest-cov
+        pip install -r src/processor/requirements.txt
+    
+    - name: Run Unit Tests
+      run: |
+        pytest tests/ --cov=src/processor --cov-report=xml
+    
+    - name: Run Linting
+      run: |
+        pip install flake8
+        flake8 src/processor/
+    
+    - name: Terraform Format Check
+      uses: hashicorp/setup-terraform@v1
+      with:
+        terraform_version: ${{ env.TF_VERSION }}
+    - run: |
+        cd terraform
+        terraform fmt -check 
