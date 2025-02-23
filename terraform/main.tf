@@ -103,6 +103,8 @@ resource "aws_cloudfront_origin_access_identity" "oai" {
 }
 
 resource "aws_cloudfront_distribution" "recipe_cdn" {
+  count = var.create_cloudfront ? 1 : 0
+  
   enabled             = true
   is_ipv6_enabled    = true
   default_root_object = "index.html"
@@ -171,10 +173,16 @@ resource "aws_s3_bucket_policy" "cloudfront_access" {
 
 # ECR Repository
 resource "aws_ecr_repository" "processor" {
-  name = "recipe-processor-${var.environment}-${random_string.suffix.result}"
+  count = var.create_ecr ? 1 : 0
   
+  name = "recipe-processor-dev-${random_string.suffix.result}"
   image_scanning_configuration {
     scan_on_push = true
+  }
+  
+  tags = {
+    Environment = "dev"
+    Project     = "CIRCU-LI-ION"
   }
 }
 

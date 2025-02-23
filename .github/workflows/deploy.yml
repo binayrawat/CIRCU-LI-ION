@@ -103,29 +103,32 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v1
 
-      - name: Check Existing Resources
+      - name: Check and Store Existing Resources
         id: check-resources
         run: |
-          # Check for existing CloudFront distribution
-          CF_ID=$(aws cloudfront list-distributions --query "DistributionList.Items[?contains(Comment, 'Recipe CDN')].Id" --output text)
-          if [ ! -z "$CF_ID" ]; then
-            echo "CLOUDFRONT_EXISTS=true" >> $GITHUB_ENV
-            echo "CLOUDFRONT_ID=$CF_ID" >> $GITHUB_ENV
-            echo "Found existing CloudFront distribution: $CF_ID"
+          # Check CloudFront
+          CF_DIST=$(aws cloudfront list-distributions --query "DistributionList.Items[?contains(Comment, 'Recipe CDN')].{Id:Id,Domain:DomainName}" --output json | jq -r '.[0].Id')
+          if [ "$CF_DIST" != "null" ] && [ ! -z "$CF_DIST" ]; then
+            echo "Found CloudFront distribution: $CF_DIST"
+            echo "cloudfront_id=$CF_DIST" >> $GITHUB_OUTPUT
+            # Create a tfvars file to override CloudFront creation
+            echo "create_cloudfront = false" > override.tfvars
           fi
-          
-          # Check for existing ECR repository
-          ECR_NAME=$(aws ecr describe-repositories --query "repositories[?contains(repositoryName, 'recipe-processor-dev')].repositoryName" --output text)
-          if [ ! -z "$ECR_NAME" ]; then
-            echo "ECR_EXISTS=true" >> $GITHUB_ENV
-            echo "ECR_REPOSITORY=$ECR_NAME" >> $GITHUB_ENV
-            echo "Found existing ECR repository: $ECR_NAME"
+
+          # Check ECR
+          ECR_REPO=$(aws ecr describe-repositories --query "repositories[?contains(repositoryName, 'recipe-processor-dev')].repositoryName" --output text)
+          if [ ! -z "$ECR_REPO" ]; then
+            echo "Found ECR repository: $ECR_REPO"
+            echo "ECR_REPOSITORY=$ECR_REPO" >> $GITHUB_ENV
+            echo "ecr_repository=$ECR_REPO" >> $GITHUB_OUTPUT
+            # Add to tfvars
+            echo "create_ecr = false" >> override.tfvars
           fi
 
       - name: Terraform Init
         run: terraform init
 
-      - name: Import Resources
+      - name: Import Existing Resources
         run: |
           # Import core resources
           terraform import aws_batch_compute_environment.compute recipe-compute-dev || true
@@ -135,34 +138,41 @@ jobs:
           terraform import aws_iam_role.task_role recipe-task-role-dev || true
           
           # Import CloudFront if exists
-          if [ "${{ env.CLOUDFRONT_EXISTS }}" = "true" ]; then
-            terraform import aws_cloudfront_distribution.recipe_cdn ${{ env.CLOUDFRONT_ID }} || true
-            echo "Imported CloudFront distribution"
+          if [ ! -z "${{ steps.check-resources.outputs.cloudfront_id }}" ]; then
+            terraform import aws_cloudfront_distribution.recipe_cdn ${{ steps.check-resources.outputs.cloudfront_id }} || true
           fi
           
           # Import ECR if exists
-          if [ "${{ env.ECR_EXISTS }}" = "true" ]; then
-            terraform import aws_ecr_repository.processor ${{ env.ECR_REPOSITORY }} || true
-            echo "Imported ECR repository"
+          if [ ! -z "${{ steps.check-resources.outputs.ecr_repository }}" ]; then
+            terraform import aws_ecr_repository.processor ${{ steps.check-resources.outputs.ecr_repository }} || true
           fi
 
       - name: Terraform Plan
         id: plan
         run: |
-          # Create a plan that preserves existing resources
-          terraform plan -refresh-only -out=tfplan-refresh
-          terraform apply -auto-approve tfplan-refresh
-          terraform plan -out=tfplan
+          # Use override variables if they exist
+          if [ -f "override.tfvars" ]; then
+            terraform plan -var-file="override.tfvars" -out=tfplan
+          else
+            terraform plan -out=tfplan
+          fi
 
       - name: Terraform Apply
         if: github.ref == 'refs/heads/main'
         run: |
-          terraform apply -auto-approve tfplan
-          
-          # Set ECR repository name if not already set
-          if [ -z "${{ env.ECR_REPOSITORY }}" ]; then
-            REPO_URL=$(terraform output -raw ecr_repository_url)
+          if [ -f "override.tfvars" ]; then
+            terraform apply -var-file="override.tfvars" -auto-approve tfplan
+          else
+            terraform apply -auto-approve tfplan
+          fi
+
+      - name: Create ECR Repository if Needed
+        if: github.ref == 'refs/heads/main' && !steps.check-resources.outputs.ecr_repository
+        run: |
+          REPO_URL=$(terraform output -raw ecr_repository_url || echo "")
+          if [ ! -z "$REPO_URL" ]; then
             REPO_NAME=$(echo "$REPO_URL" | awk -F'/' '{print $NF}')
+            aws ecr create-repository --repository-name $REPO_NAME --image-scanning-configuration scanOnPush=true || true
             echo "ECR_REPOSITORY=$REPO_NAME" >> $GITHUB_ENV
           fi
 
@@ -172,7 +182,7 @@ jobs:
         uses: aws-actions/amazon-ecr-login@v1
 
       - name: Build and push Docker image
-        if: github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' && env.ECR_REPOSITORY != ''
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
@@ -186,7 +196,7 @@ jobs:
 
       - name: Cleanup
         if: always()
-        run: rm -f tfplan tfplan-refresh || true
+        run: rm -f tfplan override.tfvars || true
 
   container:
     name: 'Build & Deploy Container'

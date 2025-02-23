@@ -63,4 +63,16 @@ variable "cognito_user_pool_name" {
 variable "account_id" {
   description = "AWS Account ID"
   type        = string
+}
+
+variable "create_cloudfront" {
+  description = "Whether to create CloudFront distribution"
+  type        = bool
+  default     = true
+}
+
+variable "create_ecr" {
+  description = "Whether to create ECR repository"
+  type        = bool
+  default     = true
 } 
