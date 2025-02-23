@@ -142,13 +142,14 @@ jobs:
           terraform apply -auto-approve tfplan
           # Extract repository name from the URL output
           REPO_URL=$(terraform output -raw ecr_repository_url)
-          REPO_NAME=$(basename $REPO_URL)
+          REPO_NAME=$(echo "$REPO_URL" | cut -d'/' -f2)
           echo "ECR_REPOSITORY=${REPO_NAME}" >> $GITHUB_ENV
           echo "Repository name: ${REPO_NAME}"
 
       - name: Verify ECR Repository
         if: github.ref == 'refs/heads/main' && env.ECR_REPOSITORY != ''
         run: |
+          echo "Verifying repository: ${{ env.ECR_REPOSITORY }}"
           # Try to create the repository if it doesn't exist
           aws ecr describe-repositories --repository-names ${{ env.ECR_REPOSITORY }} || \
           aws ecr create-repository \
@@ -166,7 +167,7 @@ jobs:
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
-        working-directory: ./src/processor
+        working-directory: ../src/processor
         run: |
           echo "Building image for repository: $ECR_REGISTRY/$ECR_REPOSITORY"
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
