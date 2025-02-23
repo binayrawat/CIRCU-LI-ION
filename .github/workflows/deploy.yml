@@ -140,17 +140,30 @@ jobs:
         id: apply
         run: |
           terraform apply -auto-approve tfplan
-          # Extract repository name from the URL output
-          REPO_URL=$(terraform output -raw ecr_repository_url)
-          REPO_NAME=$(echo "$REPO_URL" | cut -d'/' -f2)
-          echo "ECR_REPOSITORY=${REPO_NAME}" >> $GITHUB_ENV
-          echo "Repository name: ${REPO_NAME}"
+          # Get the ECR repository URL and extract the repository name more reliably
+          REPO_URL=$(terraform output -raw ecr_repository_url || echo "")
+          if [ -z "$REPO_URL" ]; then
+            echo "Error: Failed to get ECR repository URL"
+            exit 1
+          fi
+          # Extract only the repository name part after the last '/'
+          REPO_NAME=$(echo "$REPO_URL" | rev | cut -d'/' -f1 | rev)
+          if [ -z "$REPO_NAME" ]; then
+            echo "Error: Failed to extract repository name from URL: $REPO_URL"
+            exit 1
+          fi
+          # Set the environment variable properly
+          echo "Repository name extracted: $REPO_NAME"
+          echo "ECR_REPOSITORY=$REPO_NAME" >> "$GITHUB_ENV"
 
       - name: Verify ECR Repository
-        if: github.ref == 'refs/heads/main' && env.ECR_REPOSITORY != ''
+        if: github.ref == 'refs/heads/main'
         run: |
+          if [ -z "${{ env.ECR_REPOSITORY }}" ]; then
+            echo "Error: ECR_REPOSITORY is not set"
+            exit 1
+          fi
           echo "Verifying repository: ${{ env.ECR_REPOSITORY }}"
-          # Try to create the repository if it doesn't exist
           aws ecr describe-repositories --repository-names ${{ env.ECR_REPOSITORY }} || \
           aws ecr create-repository \
             --repository-name ${{ env.ECR_REPOSITORY }} \
