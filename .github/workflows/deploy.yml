@@ -68,7 +68,7 @@ jobs:
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pytest pytest-cov flake8
+          pip install -r tests/requirements-test.txt
           pip install -r src/processor/requirements.txt
       
       - name: Run Tests
