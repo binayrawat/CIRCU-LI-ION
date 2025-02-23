@@ -5,6 +5,82 @@ resource "random_string" "suffix" {
   upper   = false
 }
 
+# VPC Resources
+resource "aws_vpc" "main" {
+  cidr_block           = "10.0.0.0/16"
+  enable_dns_hostnames = true
+  enable_dns_support   = true
+
+  tags = {
+    Name        = "recipe-vpc-dev"
+    Environment = "dev"
+    Project     = "CIRCU-LI-ION"
+  }
+}
+
+resource "aws_subnet" "batch" {
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = "10.0.1.0/24"
+  availability_zone = "us-west-2a"
+
+  map_public_ip_on_launch = true
+
+  tags = {
+    Name        = "recipe-subnet-dev"
+    Environment = "dev"
+    Project     = "CIRCU-LI-ION"
+  }
+}
+
+resource "aws_internet_gateway" "main" {
+  vpc_id = aws_vpc.main.id
+
+  tags = {
+    Name        = "recipe-igw-dev"
+    Environment = "dev"
+    Project     = "CIRCU-LI-ION"
+  }
+}
+
+resource "aws_route_table" "main" {
+  vpc_id = aws_vpc.main.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.main.id
+  }
+
+  tags = {
+    Name        = "recipe-rt-dev"
+    Environment = "dev"
+    Project     = "CIRCU-LI-ION"
+  }
+}
+
+resource "aws_route_table_association" "main" {
+  subnet_id      = aws_subnet.batch.id
+  route_table_id = aws_route_table.main.id
+}
+
+resource "aws_security_group" "batch" {
+  name        = "recipe-batch-sg-dev"
+  description = "Security group for Batch compute environment"
+  vpc_id      = aws_vpc.main.id
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name        = "recipe-batch-sg-dev"
+    Environment = "dev"
+    Project     = "CIRCU-LI-ION"
+  }
+}
+
 # S3 Bucket for recipe storage
 resource "aws_s3_bucket" "recipe_storage" {
   bucket = "${var.bucket_name_prefix}-${var.environment}"
