@@ -21,10 +21,5 @@ RUN chown -R processor:processor /app
 # Switch to non-root user
 USER processor
 
-# Environment variables will be provided by AWS Batch
-ENV BUCKET_NAME=""
-ENV INPUT_KEY=""
-ENV OUTPUT_KEY=""
-
 # Command to run the application
-CMD ["python", "process.py"] 
+CMD ["python", "process.py"]
