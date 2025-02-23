@@ -96,12 +96,18 @@ jobs:
     env:
       AWS_REGION: us-west-2
       BASE_REPOSITORY: recipe-processor-dev
+      TF_VERSION: "1.5.0"  # Specify your Terraform version
 
     steps:
       - uses: actions/checkout@v2
       
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v2
+        uses: aws-actions/configure-aws-credentials@v1
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -142,9 +148,13 @@ jobs:
 
       - name: Get ECR Repository Name
         id: get-ecr
+        working-directory: ./terraform
         run: |
+          # Initialize Terraform
+          terraform init
+          
           # Get the full repository name from Terraform output
-          REPO_NAME=$(terraform -chdir=terraform output -raw ecr_repository_name || echo "")
+          REPO_NAME=$(terraform output -raw ecr_repository_name || echo "")
           if [ -z "$REPO_NAME" ]; then
             echo "Failed to get ECR repository name from Terraform"
             exit 1
