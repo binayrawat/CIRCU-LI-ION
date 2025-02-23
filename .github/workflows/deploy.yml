@@ -109,22 +109,23 @@ jobs:
           # Check CloudFront
           CF_ID=$(aws cloudfront list-distributions --query "DistributionList.Items[?contains(Comment, 'Recipe CDN')].Id" --output text)
           if [ ! -z "$CF_ID" ] && [ "$CF_ID" != "null" ]; then
-            echo "Found existing CloudFront: $CF_ID"
-            echo "create_cloudfront = false" >> override.tfvars
-            echo "existing_cloudfront_id = \"$CF_ID\"" >> override.tfvars
+            echo "cloudfront_id=$CF_ID" >> $GITHUB_OUTPUT
+            echo "create_cloudfront=false" >> override.tfvars
+            echo "existing_cloudfront_id=\"$CF_ID\"" >> override.tfvars
           else
-            echo "create_cloudfront = true" >> override.tfvars
+            echo "create_cloudfront=true" >> override.tfvars
           fi
           
           # Check ECR
           ECR_REPO=$(aws ecr describe-repositories --query "repositories[?contains(repositoryName, 'recipe-processor-dev')].repositoryUri" --output text)
           if [ ! -z "$ECR_REPO" ] && [ "$ECR_REPO" != "null" ]; then
-            echo "Found existing ECR: $ECR_REPO"
-            echo "create_ecr = false" >> override.tfvars
-            echo "existing_ecr_image = \"${ECR_REPO}:latest\"" >> override.tfvars
+            echo "ecr_repository=${ECR_REPO##*/}" >> $GITHUB_OUTPUT
+            echo "create_ecr=false" >> override.tfvars
+            echo "existing_ecr_image=\"${ECR_REPO}:latest\"" >> override.tfvars
+            echo "ECR_REPOSITORY=${ECR_REPO##*/}" >> $GITHUB_ENV
           else
-            echo "create_ecr = true" >> override.tfvars
-            echo "existing_ecr_image = \"public.ecr.aws/amazonlinux/amazonlinux:latest\"" >> override.tfvars
+            echo "create_ecr=true" >> override.tfvars
+            echo "existing_ecr_image=\"public.ecr.aws/amazonlinux/amazonlinux:latest\"" >> override.tfvars
           fi
           
           cat override.tfvars
@@ -162,22 +163,19 @@ jobs:
           fi
 
       - name: Terraform Apply
+        id: apply
         if: github.ref == 'refs/heads/main'
         run: |
-          if [ -f "override.tfvars" ]; then
-            terraform apply -var-file="override.tfvars" -auto-approve tfplan
-          else
-            terraform apply -auto-approve tfplan
-          fi
-
-      - name: Create ECR Repository if Needed
-        if: github.ref == 'refs/heads/main' && !steps.check-resources.outputs.ecr_repository
-        run: |
-          REPO_URL=$(terraform output -raw ecr_repository_url || echo "")
-          if [ ! -z "$REPO_URL" ]; then
-            REPO_NAME=$(echo "$REPO_URL" | awk -F'/' '{print $NF}')
-            aws ecr create-repository --repository-name $REPO_NAME --image-scanning-configuration scanOnPush=true || true
-            echo "ECR_REPOSITORY=$REPO_NAME" >> $GITHUB_ENV
+          terraform apply -auto-approve tfplan
+          
+          # Export ECR repository info if created
+          if [ "${{ steps.check-resources.outputs.ecr_repository }}" == "" ]; then
+            REPO_URL=$(terraform output -json | jq -r '.ecr_repository_url.value // empty')
+            if [ ! -z "$REPO_URL" ]; then
+              REPO_NAME=$(echo "$REPO_URL" | awk -F'/' '{print $NF}')
+              echo "ECR_REPOSITORY=$REPO_NAME" >> $GITHUB_ENV
+              echo "ecr_repository=$REPO_NAME" >> $GITHUB_OUTPUT
+            fi
           fi
 
       - name: Login to Amazon ECR
