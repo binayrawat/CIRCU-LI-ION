@@ -9,8 +9,15 @@ def test_process_recipe(s3):
     input_key = 'recipes/test.json'
     output_key = 'processed/test.json.zip'
     
-    # Create test bucket and upload test file
-    s3.create_bucket(Bucket=bucket)
+    # Create test bucket with location constraint
+    s3.create_bucket(
+        Bucket=bucket,
+        CreateBucketConfiguration={
+            'LocationConstraint': 'us-west-2'
+        }
+    )
+    
+    # Upload test file
     s3.put_object(
         Bucket=bucket,
         Key=input_key,
