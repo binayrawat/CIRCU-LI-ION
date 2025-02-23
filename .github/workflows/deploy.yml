@@ -86,8 +86,10 @@ jobs:
     name: 'Deploy Infrastructure'
     needs: test
     runs-on: ubuntu-latest
-    environment: ${{ github.event.inputs.environment || 'dev' }}
-    
+    defaults:
+      run:
+        working-directory: ./terraform
+
     steps:
       - uses: actions/checkout@v2
       
@@ -102,7 +104,9 @@ jobs:
         uses: hashicorp/setup-terraform@v1
 
       - name: Terraform Init
-        run: terraform init
+        run: |
+          ls -la  # Debug: list files
+          terraform init
 
       # Import existing resources before planning
       - name: Import existing resources
@@ -118,7 +122,14 @@ jobs:
         run: terraform plan -out=tfplan
 
       - name: Terraform Apply
+        if: github.ref == 'refs/heads/main'
         run: terraform apply -auto-approve tfplan
+
+      # Update to use environment files instead of set-output
+      - name: Set outputs
+        run: |
+          echo "plan_exit_code=$?" >> $GITHUB_ENV
+          echo "terraform_plan=$(terraform show -no-color tfplan)" >> $GITHUB_ENV
 
   container:
     name: 'Build & Deploy Container'
