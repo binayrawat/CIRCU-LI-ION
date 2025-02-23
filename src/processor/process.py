@@ -3,19 +3,10 @@ import zipfile
 import os
 import logging
 
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def validate_recipe(recipe_data):
-    """Validate recipe format"""
-    required_fields = ['recipe_id', 'version', 'steps']
-    for field in required_fields:
-        if field not in recipe_data:
-            raise ValueError(f"Missing required field: {field}")
-    
-    for step in recipe_data['steps']:
-        if not all(k in step for k in ['step_id', 'action', 'target']):
-            raise ValueError("Invalid step format")
 
 def process_recipe(bucket, input_key, output_key):
     """Process a recipe file"""
@@ -42,9 +33,3 @@ def process_recipe(bucket, input_key, output_key):
             os.remove("/tmp/input.file")
         if os.path.exists("/tmp/output.zip"):
             os.remove("/tmp/output.zip")
-
-if __name__ == "__main__":
-    bucket = os.environ['BUCKET_NAME']
-    input_key = os.environ['INPUT_KEY']
-    output_key = os.environ['OUTPUT_KEY']
-    process_recipe(bucket, input_key, output_key) 
