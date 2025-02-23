@@ -33,3 +33,4 @@ def process_recipe(bucket, input_key, output_key):
             os.remove("/tmp/input.file")
         if os.path.exists("/tmp/output.zip"):
             os.remove("/tmp/output.zip")
+
