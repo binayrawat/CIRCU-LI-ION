@@ -178,23 +178,53 @@ jobs:
             fi
           fi
 
+      - name: Create ECR Repository
+        if: github.ref == 'refs/heads/main'
+        id: create-ecr
+        run: |
+          # Get AWS account ID
+          AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query "Account" --output text)
+          AWS_REGION="us-west-2"
+          REPO_NAME="recipe-processor-dev"
+          
+          # Create repository if it doesn't exist
+          if ! aws ecr describe-repositories --repository-names $REPO_NAME 2>/dev/null; then
+            echo "Creating ECR repository $REPO_NAME"
+            aws ecr create-repository \
+              --repository-name $REPO_NAME \
+              --image-scanning-configuration scanOnPush=true \
+              --tags Key=Environment,Value=dev
+          fi
+          
+          # Set environment variables
+          echo "ECR_REPOSITORY=$REPO_NAME" >> $GITHUB_ENV
+          echo "AWS_ACCOUNT_ID=$AWS_ACCOUNT_ID" >> $GITHUB_ENV
+          echo "ECR_REGISTRY=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com" >> $GITHUB_ENV
+
       - name: Login to Amazon ECR
         if: github.ref == 'refs/heads/main'
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
 
       - name: Build and push Docker image
-        if: github.ref == 'refs/heads/main' && env.ECR_REPOSITORY != ''
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          IMAGE_TAG: ${{ github.sha }}
+        if: github.ref == 'refs/heads/main'
         run: |
           cd $GITHUB_WORKSPACE/src/processor
-          echo "Building for repository: ${{ env.ECR_REPOSITORY }}"
-          docker build -t $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG .
-          docker tag $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:latest
-          docker push $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG
-          docker push $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:latest
+          
+          # Debug information
+          echo "Building image for:"
+          echo "Registry: ${{ env.ECR_REGISTRY }}"
+          echo "Repository: ${{ env.ECR_REPOSITORY }}"
+          echo "Tag: ${{ github.sha }}"
+          
+          # Build and tag the image
+          docker build -t ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }} .
+          docker tag ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }} ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest
+          
+          # Push the image
+          echo "Pushing image to ECR..."
+          docker push ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+          docker push ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest
 
       - name: Cleanup
         if: always()
