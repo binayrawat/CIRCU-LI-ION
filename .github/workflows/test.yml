@@ -1,15 +1,18 @@
 name: 'Test Infrastructure'
 
 on:
-  pull_request:
-    branches: [ main ]
   push:
+    branches: [ main ]
+  pull_request:
     branches: [ main ]
 
 jobs:
   test:
     name: 'Test'
     runs-on: ubuntu-latest
+
+    outputs:
+      test_status: ${{ job.status }}  # Output test status for deploy workflow
 
     env:
       OUTPUT_BUCKET: 'test-bucket'
