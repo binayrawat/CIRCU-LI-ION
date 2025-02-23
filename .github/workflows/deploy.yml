@@ -116,43 +116,18 @@ jobs:
           echo "Listing existing ECR repositories..."
           aws ecr describe-repositories || true
 
-      - name: Create ECR Repository
+      - name: Create ECR Repository if not exists
         run: |
-          echo "Creating ECR repository with full permissions..."
-          
-          # Create repository with proper permissions
-          aws ecr create-repository \
-            --repository-name ${{ env.ECR_REPOSITORY }} \
-            --image-scanning-configuration scanOnPush=true \
-            --encryption-configuration encryptionType=AES256 || true
-          
-          # Add repository policy
-          aws ecr set-repository-policy \
-            --repository-name ${{ env.ECR_REPOSITORY }} \
-            --policy-text '{
-              "Version": "2012-10-17",
-              "Statement": [
-                {
-                  "Sid": "AllowPushPull",
-                  "Effect": "Allow",
-                  "Principal": {
-                    "AWS": ["'$(aws sts get-caller-identity --query "Arn" --output text)'"]
-                  },
-                  "Action": [
-                    "ecr:BatchGetImage",
-                    "ecr:BatchCheckLayerAvailability",
-                    "ecr:CompleteLayerUpload",
-                    "ecr:GetDownloadUrlForLayer",
-                    "ecr:InitiateLayerUpload",
-                    "ecr:PutImage",
-                    "ecr:UploadLayerPart"
-                  ]
-                }
-              ]
-            }'
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v1
+          # Check if repository exists
+          if ! aws ecr describe-repositories --repository-names ${{ env.ECR_REPOSITORY }} 2>/dev/null; then
+            echo "Creating ECR repository ${{ env.ECR_REPOSITORY }}"
+            aws ecr create-repository \
+              --repository-name ${{ env.ECR_REPOSITORY }} \
+              --image-scanning-configuration scanOnPush=true \
+              --encryption-configuration encryptionType=AES256
+          else
+            echo "Repository ${{ env.ECR_REPOSITORY }} already exists"
+          fi
 
       - name: Login to Amazon ECR
         id: login-ecr
