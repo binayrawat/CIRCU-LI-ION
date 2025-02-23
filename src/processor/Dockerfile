@@ -10,8 +10,7 @@ WORKDIR /app
 COPY requirements.txt .
 
 # Install dependencies as root
-RUN pip install --no-cache-dir -r requirements.txt && \
-    pip install --upgrade pip
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY process.py .

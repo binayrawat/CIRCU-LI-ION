@@ -126,7 +126,11 @@ jobs:
             --image-scanning-configuration scanOnPush=true \
             --encryption-configuration encryptionType=AES256 2>/dev/null || true
           
-          # Build and tag
+          # Debug: Show directory structure
+          echo "Current directory contents:"
+          ls -la
+          
+          # Build and tag (using correct path from tree structure)
           cd src/processor
           docker build -t $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:latest .
           docker build -t $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:${{ github.sha }} .
