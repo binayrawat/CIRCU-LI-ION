@@ -1,3 +1,15 @@
+# Provider configuration
+provider "aws" {
+  region = "us-west-2"
+}
+
+# Random string for unique names
+resource "random_string" "suffix" {
+  length  = 8
+  special = false
+  upper   = false
+}
+
 # S3 Bucket for recipe storage
 resource "aws_s3_bucket" "recipe_storage" {
   bucket = "${var.bucket_name_prefix}-${var.environment}"
@@ -186,13 +198,6 @@ resource "aws_ecr_repository" "processor" {
   }
 }
 
-# Add this at the top of the file
-resource "random_string" "suffix" {
-  length  = 8
-  special = false
-  upper   = false
-}
-
 # Batch compute environment
 resource "aws_batch_compute_environment" "compute" {
   compute_environment_name = "recipe-compute-${var.environment}"
@@ -348,34 +353,4 @@ resource "aws_batch_job_definition" "processor" {
     executionRoleArn = aws_iam_role.task_role.arn
     jobRoleArn       = aws_iam_role.task_role.arn
   })
-}
-
-# Outputs
-output "cognito_user_pool_id" {
-  value = aws_cognito_user_pool.customers.id
-}
-
-output "cognito_client_id" {
-  value = aws_cognito_user_pool_client.client.id
-}
-
-# Comment out VPN-related output
-# output "vpn_connection_id" {
-#   value = aws_vpn_connection.main.id
-# }
-
-output "cloudfront_domain" {
-  value = aws_cloudfront_distribution.recipe_cdn.domain_name
-}
-
-output "bucket_name" {
-  value = aws_s3_bucket.recipe_storage.id
-}
-
-output "batch_compute_environment" {
-  value = aws_batch_compute_environment.compute.compute_environment_name
-}
-
-output "ecr_repository_url" {
-  value = aws_ecr_repository.processor.repository_url
 } 
