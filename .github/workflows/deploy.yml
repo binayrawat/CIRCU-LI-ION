@@ -104,19 +104,28 @@ jobs:
         uses: hashicorp/setup-terraform@v1
 
       - name: Terraform Init
-        run: |
-          ls -la  # Debug: list files
-          terraform init
+        run: terraform init
 
       # Import existing resources before planning
       - name: Import existing resources
         run: |
-          # Import S3 bucket if it exists
-          aws s3 ls s3://circu-li-ion-dev && terraform import aws_s3_bucket.recipe_storage circu-li-ion-dev || echo "Bucket doesn't exist"
+          # Import AWS Batch Compute Environment if it exists
+          aws batch describe-compute-environments --compute-environments recipe-compute-dev && \
+          terraform import aws_batch_compute_environment.compute recipe-compute-dev || \
+          echo "Compute environment doesn't exist"
           
-          # Import IAM roles if they exist
-          aws iam get-role --role-name recipe-batch-service-dev && terraform import aws_iam_role.batch_service_role recipe-batch-service-dev || echo "Batch role doesn't exist"
-          aws iam get-role --role-name recipe-task-role-dev && terraform import aws_iam_role.task_role recipe-task-role-dev || echo "Task role doesn't exist"
+          # Import other resources
+          aws s3 ls s3://circu-li-ion-dev && \
+          terraform import aws_s3_bucket.recipe_storage circu-li-ion-dev || \
+          echo "Bucket doesn't exist"
+          
+          aws iam get-role --role-name recipe-batch-service-dev && \
+          terraform import aws_iam_role.batch_service_role recipe-batch-service-dev || \
+          echo "Batch role doesn't exist"
+          
+          aws iam get-role --role-name recipe-task-role-dev && \
+          terraform import aws_iam_role.task_role recipe-task-role-dev || \
+          echo "Task role doesn't exist"
 
       - name: Terraform Plan
         run: terraform plan -out=tfplan
@@ -125,7 +134,7 @@ jobs:
         if: github.ref == 'refs/heads/main'
         run: terraform apply -auto-approve tfplan
 
-      # Update to use environment files instead of set-output
+      # Use environment files instead of set-output
       - name: Set outputs
         run: |
           echo "plan_exit_code=$?" >> $GITHUB_ENV
