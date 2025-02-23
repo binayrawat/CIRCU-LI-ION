@@ -4,8 +4,10 @@ on:
   push:
     branches: [ main ]
     paths:
-      - 'src/processor/**'  # Trigger on processor code changes
+      - 'src/**'
       - 'terraform/**'
+      - '.github/workflows/**'
+      - 'tests/**'
   workflow_dispatch:
     inputs:
       environment:
