@@ -95,8 +95,8 @@ jobs:
 
     env:
       AWS_REGION: us-west-2
-      BASE_REPOSITORY: recipe-processor-dev
-      TF_VERSION: "1.5.0"  # Specify your Terraform version
+      TF_VERSION: "1.5.0"
+      ECR_REPOSITORY: recipe-processor-dev  # Fallback repository name
 
     steps:
       - uses: actions/checkout@v2
@@ -113,16 +113,7 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Verify AWS Authentication
-        run: |
-          echo "Verifying AWS credentials..."
-          aws sts get-caller-identity
-          
-          # List existing ECR repositories
-          echo "Listing existing ECR repositories..."
-          aws ecr describe-repositories || true
-
-      - name: Create ECR Repository if not exists
+      - name: Create ECR Repository
         run: |
           # Check if repository exists
           if ! aws ecr describe-repositories --repository-names ${{ env.ECR_REPOSITORY }} 2>/dev/null; then
@@ -135,10 +126,6 @@ jobs:
             echo "Repository ${{ env.ECR_REPOSITORY }} already exists"
           fi
 
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v1
-
       - name: Get AWS Account ID
         id: get-aws-account
         run: |
@@ -146,22 +133,9 @@ jobs:
           echo "account_id=$AWS_ACCOUNT_ID" >> $GITHUB_OUTPUT
           echo "ECR_REGISTRY=$AWS_ACCOUNT_ID.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com" >> $GITHUB_ENV
 
-      - name: Get ECR Repository Name
-        id: get-ecr
-        working-directory: ./terraform
-        run: |
-          # Initialize Terraform
-          terraform init
-          
-          # Get the full repository name from Terraform output
-          REPO_NAME=$(terraform output -raw ecr_repository_name || echo "")
-          if [ -z "$REPO_NAME" ]; then
-            echo "Failed to get ECR repository name from Terraform"
-            exit 1
-          fi
-          echo "ECR_REPOSITORY=$REPO_NAME" >> $GITHUB_ENV
-          echo "repository=$REPO_NAME" >> $GITHUB_OUTPUT
-          echo "Found ECR repository: $REPO_NAME"
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
 
       - name: Build and push
         uses: docker/build-push-action@v2
