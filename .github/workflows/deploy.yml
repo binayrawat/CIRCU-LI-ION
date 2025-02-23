@@ -1,20 +1,20 @@
-name: CIRCU-LI-ION Pipeline
+name: Deploy Infrastructure
 
 on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
   workflow_dispatch:
     inputs:
-      action:
-        description: 'Action to perform (deploy/destroy)'
+      environment:
+        description: 'Environment to deploy'
         required: true
-        default: 'deploy'
+        type: choice
+        options:
+          - dev
+          - prod
+        default: 'dev'
 
 env:
   AWS_REGION: us-west-2
-  ECR_REPOSITORY: recipe-processor-dev
+  ECR_REPOSITORY: recipe-processor-${{ github.event.inputs.environment }}
   TF_VERSION: 1.0.0
 
 jobs:
@@ -41,10 +41,12 @@ jobs:
           pytest tests/ --cov=src/processor --cov-report=xml
           flake8 src/processor/
 
-  infrastructure:
-    name: 'Infrastructure Management'
+  deploy:
+    name: 'Deploy Infrastructure'
     needs: test
     runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+    
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v2
@@ -67,21 +69,18 @@ jobs:
       
       - name: Terraform Plan
         working-directory: ./terraform
-        run: |
-          if [[ "${{ github.event.inputs.action }}" == "destroy" ]]; then
-            terraform plan -destroy -out=tfplan
-          else
-            terraform plan -out=tfplan
-          fi
+        run: terraform plan -out=tfplan
       
       - name: Terraform Apply
         working-directory: ./terraform
         run: terraform apply -auto-approve tfplan
 
   container:
-    name: 'Container Build & Deploy'
-    needs: infrastructure
+    name: 'Build & Deploy Container'
+    needs: deploy
     runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+    
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v2
@@ -104,22 +103,4 @@ jobs:
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:${{ github.sha }} ./src/processor
           docker tag $ECR_REGISTRY/$ECR_REPOSITORY:${{ github.sha }} $ECR_REGISTRY/$ECR_REPOSITORY:latest
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:${{ github.sha }}
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
-
-  notify:
-    name: 'Notification'
-    needs: [test, infrastructure, container]
-    runs-on: ubuntu-latest
-    if: always()
-    steps:
-      - name: Check Pipeline Status
-        run: |
-          if [[ "${{ needs.test.result }}" == "success" ]] && \
-             [[ "${{ needs.infrastructure.result }}" == "success" ]] && \
-             [[ "${{ needs.container.result }}" == "success" ]]; then
-            echo "Pipeline completed successfully!"
-            exit 0
-          else
-            echo "Pipeline failed!"
-            exit 1
-          fi 
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest 

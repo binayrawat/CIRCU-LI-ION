@@ -1,138 +1,57 @@
-name: Terraform Destroy
+name: Destroy Infrastructure
 
 on:
-  workflow_dispatch:  # Allows manual execution  
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to destroy'
+        required: true
+        type: choice
+        options:
+          - dev
+          - prod
+        default: 'dev'
 
-permissions:
-  id-token: write
-  contents: read
+env:
+  AWS_REGION: us-west-2
+  TF_VERSION: 1.0.0
 
 jobs:
-  terraform-destroy:
+  destroy:
+    name: 'Destroy Infrastructure'
     runs-on: ubuntu-latest
-
+    environment: ${{ github.event.inputs.environment }}
+    
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
+      - name: Checkout Repository
+        uses: actions/checkout@v2
+      
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v1
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: ${{ secrets.AWS_REGION }}
-
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v1
         with:
-          terraform_version: 1.6.0
-
-      - name: Empty S3 Buckets
-        run: |
-          echo "Emptying S3 buckets before destroy..."
-          BUCKETS=$(aws s3api list-buckets --query 'Buckets[?starts_with(Name, `recipe-storage-`)].Name' --output text)
-          for BUCKET in $BUCKETS; do
-            echo "Emptying bucket: $BUCKET"
-            # Remove all versions and delete markers
-            aws s3api list-object-versions \
-              --bucket "$BUCKET" \
-              --output json \
-              --query '{Objects: Versions[].{Key:Key,VersionId:VersionId}} + {Objects: DeleteMarkers[].{Key:Key,VersionId:VersionId}}' \
-              | jq 'if .Objects then {Objects: .Objects, Quiet: true} else null end' \
-              | while read -r BATCH; do
-                if [ "$BATCH" != "null" ]; then
-                  echo "$BATCH" | aws s3api delete-objects --bucket "$BUCKET" --delete "$BATCH"
-                fi
-              done
-            echo "Bucket emptied: $BUCKET"
-          done
-
-      - name: Delete SNS Topics and Subscriptions
-        run: |
-          echo "Deleting SNS Topics and Subscriptions..."
-          # List all SNS topics containing 'recipe-processor'
-          TOPICS=$(aws sns list-topics --query 'Topics[?contains(TopicArn, `recipe-processor`)].TopicArn' --output text)
-          for TOPIC in $TOPICS; do
-            echo "Processing SNS Topic: $TOPIC"
-            
-            # Delete all subscriptions for this topic
-            SUBS=$(aws sns list-subscriptions-by-topic --topic-arn "$TOPIC" --query 'Subscriptions[*].SubscriptionArn' --output text)
-            for SUB in $SUBS; do
-              if [ "$SUB" != "PendingConfirmation" ]; then
-                echo "Deleting subscription: $SUB"
-                aws sns unsubscribe --subscription-arn "$SUB"
-              fi
-            done
-            
-            # Delete the topic
-            echo "Deleting topic: $TOPIC"
-            aws sns delete-topic --topic-arn "$TOPIC"
-          done
-
-      - name: Delete CloudWatch Log Groups
-        run: |
-          echo "Deleting CloudWatch Log Groups..."
-          LOG_GROUPS=$(aws logs describe-log-groups --query 'logGroups[?starts_with(logGroupName, `/aws/lambda/recipe_processor`)].logGroupName' --output text)
-          for LOG_GROUP in $LOG_GROUPS; do
-            echo "Deleting log group: $LOG_GROUP"
-            aws logs delete-log-group --log-group-name "$LOG_GROUP"
-          done
-
-      - name: Delete CloudWatch Alarms
-        run: |
-          echo "Deleting CloudWatch Alarms..."
-          ALARMS=$(aws cloudwatch describe-alarms --query 'MetricAlarms[?starts_with(AlarmName, `recipe-processor`)].AlarmName' --output text)
-          for ALARM in $ALARMS; do
-            echo "Deleting alarm: $ALARM"
-            aws cloudwatch delete-alarms --alarm-names "$ALARM"
-          done
-
+          terraform_version: ${{ env.TF_VERSION }}
+      
       - name: Terraform Init
+        working-directory: ./terraform
         run: terraform init
-        working-directory: terraform/environments/dev
-
-      - name: Terraform Destroy
-        run: terraform destroy -auto-approve -var="environment=dev" -var="project=CIRCU-LI-ION"
-        working-directory: terraform/environments/dev
-
-      - name: Verify Cleanup
+      
+      - name: Terraform Plan Destroy
+        working-directory: ./terraform
+        run: terraform plan -destroy -out=tfplan
+      
+      - name: Confirm Destroy
         run: |
-          echo "Verifying cleanup..."
-          
-          # Check S3 buckets
-          REMAINING_BUCKETS=$(aws s3api list-buckets --query 'Buckets[?starts_with(Name, `recipe-storage-`)].Name' --output text)
-          if [ ! -z "$REMAINING_BUCKETS" ]; then
-            echo "Warning: Found remaining S3 buckets: $REMAINING_BUCKETS"
-            echo "Forcing deletion of remaining buckets..."
-            for BUCKET in $REMAINING_BUCKETS; do
-              aws s3 rb s3://$BUCKET --force
-            done
-          fi
-          
-          # Check SNS topics
-          REMAINING_TOPICS=$(aws sns list-topics --query 'Topics[?contains(TopicArn, `recipe-processor`)].TopicArn' --output text)
-          if [ ! -z "$REMAINING_TOPICS" ]; then
-            echo "Warning: Found remaining SNS topics: $REMAINING_TOPICS"
-            for TOPIC in $REMAINING_TOPICS; do
-              aws sns delete-topic --topic-arn "$TOPIC"
-            done
-          fi
-          
-          # Check Lambda functions
-          REMAINING_FUNCTIONS=$(aws lambda list-functions --query 'Functions[?starts_with(FunctionName, `recipe_processor`)].FunctionName' --output text)
-          if [ ! -z "$REMAINING_FUNCTIONS" ]; then
-            echo "Warning: Found remaining Lambda functions: $REMAINING_FUNCTIONS"
-            for FUNC in $REMAINING_FUNCTIONS; do
-              aws lambda delete-function --function-name "$FUNC"
-            done
-          fi
-          
-          # Check CloudWatch Log Groups
-          REMAINING_LOG_GROUPS=$(aws logs describe-log-groups --query 'logGroups[?starts_with(logGroupName, `/aws/lambda/recipe_processor`)].logGroupName' --output text)
-          if [ ! -z "$REMAINING_LOG_GROUPS" ]; then
-            echo "Warning: Found remaining Log Groups: $REMAINING_LOG_GROUPS"
-            for LOG_GROUP in $REMAINING_LOG_GROUPS; do
-              aws logs delete-log-group --log-group-name "$LOG_GROUP"
-            done
-          fi
-          
-          echo "Cleanup verification complete"
+          echo "⚠️ WARNING! You are about to destroy the ${{ github.event.inputs.environment }} environment!"
+          echo "Waiting 30 seconds before proceeding..."
+          sleep 30
+      
+      - name: Terraform Destroy
+        working-directory: ./terraform
+        run: terraform apply -auto-approve tfplan 
