@@ -23,9 +23,10 @@ on:
 
 env:
   AWS_REGION: us-west-2
-  ECR_REPOSITORY: recipe-processor-${{ github.event.inputs.environment || 'dev' }}
+  ECR_REPOSITORY: recipe-processor
   TF_VERSION: 1.0.0
   PYTHON_VERSION: 3.9
+  AWS_ACCOUNT_ID: "202533497212"
 
 jobs:
   build-and-push:
@@ -96,11 +97,13 @@ jobs:
     env:
       AWS_REGION: us-west-2
       TF_VERSION: "1.5.0"
-      ECR_REPOSITORY: recipe-processor-dev  # Fallback repository name
+      ECR_REPOSITORY: recipe-processor
+      AWS_ACCOUNT_ID: "202533497212"
 
     steps:
-      - uses: actions/checkout@v2
-      
+      - name: Checkout code
+        uses: actions/checkout@v2
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v1
         with:
@@ -108,57 +111,29 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Create ECR Repository
-        run: |
-          # Check if repository exists
-          if ! aws ecr describe-repositories --repository-names ${{ env.ECR_REPOSITORY }} 2>/dev/null; then
-            echo "Creating ECR repository ${{ env.ECR_REPOSITORY }}"
-            aws ecr create-repository \
-              --repository-name ${{ env.ECR_REPOSITORY }} \
-              --image-scanning-configuration scanOnPush=true \
-              --encryption-configuration encryptionType=AES256
-          else
-            echo "Repository ${{ env.ECR_REPOSITORY }} already exists"
-          fi
-
-      - name: Get AWS Account ID
-        id: get-aws-account
-        run: |
-          AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query "Account" --output text)
-          echo "account_id=$AWS_ACCOUNT_ID" >> $GITHUB_OUTPUT
-          echo "ECR_REGISTRY=$AWS_ACCOUNT_ID.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com" >> $GITHUB_ENV
-
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
 
-      - name: Debug directory structure
+      - name: Build and push
         run: |
-          echo "Current directory: $(pwd)"
-          ls -la
-          echo "Repository contents:"
-          find . -type f
-
-      - name: Build and push Docker image
-        run: |
-          # Find the Dockerfile location
-          DOCKERFILE_PATH=$(find . -name Dockerfile)
-          if [ -z "$DOCKERFILE_PATH" ]; then
-            echo "Error: Dockerfile not found"
-            exit 1
-          fi
+          # Set ECR registry URL
+          ECR_REGISTRY="${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com"
           
-          DOCKER_CONTEXT=$(dirname "$DOCKERFILE_PATH")
-          echo "Building from context: $DOCKER_CONTEXT"
+          # Create repository if it doesn't exist (ignore error if it exists)
+          aws ecr create-repository \
+            --repository-name ${{ env.ECR_REPOSITORY }} \
+            --image-scanning-configuration scanOnPush=true \
+            --encryption-configuration encryptionType=AES256 2>/dev/null || true
           
-          # Build the image
-          docker build -t ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }} "$DOCKER_CONTEXT"
-          docker tag ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }} \
-                    ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest
+          # Build and tag
+          cd src/processor
+          docker build -t $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:latest .
+          docker build -t $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:${{ github.sha }} .
           
-          # Push the images
-          docker push ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
-          docker push ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest
+          # Push images
+          docker push $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:latest
+          docker push $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
 
   container:
     name: 'Build & Deploy Container'
