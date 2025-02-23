@@ -1,8 +1,3 @@
-# Provider configuration
-provider "aws" {
-  region = "us-west-2"
-}
-
 # Random string for unique names
 resource "random_string" "suffix" {
   length  = 8
@@ -159,7 +154,7 @@ resource "aws_cloudfront_distribution" "recipe_cdn" {
   }
   
   tags = {
-    Environment = var.environment
+    Environment = "dev"
   }
 }
 
