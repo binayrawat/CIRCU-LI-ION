@@ -185,6 +185,12 @@ resource "aws_cloudfront_origin_access_identity" "oai" {
   comment = "OAI for recipe distribution"
 }
 
+# CloudFront Distribution
+data "aws_cloudfront_distribution" "existing" {
+  count = var.create_cloudfront ? 0 : 1
+  id    = var.existing_cloudfront_id
+}
+
 resource "aws_cloudfront_distribution" "recipe_cdn" {
   count = var.create_cloudfront ? 1 : 0
   
@@ -384,6 +390,18 @@ resource "aws_batch_job_queue" "processing_queue" {
   ]
 }
 
+locals {
+  cloudfront_domain = var.create_cloudfront ? (
+    length(aws_cloudfront_distribution.recipe_cdn) > 0 ? aws_cloudfront_distribution.recipe_cdn[0].domain_name : null
+  ) : (
+    length(data.aws_cloudfront_distribution.existing) > 0 ? data.aws_cloudfront_distribution.existing[0].domain_name : null
+  )
+  
+  ecr_image = var.create_ecr ? (
+    length(aws_ecr_repository.processor) > 0 ? "${aws_ecr_repository.processor[0].repository_url}:latest" : var.existing_ecr_image
+  ) : var.existing_ecr_image
+}
+
 # Batch Job Definition
 resource "aws_batch_job_definition" "processor" {
   name = "recipe-processor-dev"
@@ -392,7 +410,7 @@ resource "aws_batch_job_definition" "processor" {
   propagate_tags = true
 
   container_properties = jsonencode({
-    image = var.create_ecr ? "${aws_ecr_repository.processor[0].repository_url}:latest" : null
+    image = local.ecr_image
     fargatePlatformConfiguration = {
       platformVersion = "LATEST"
     }
@@ -411,10 +429,24 @@ resource "aws_batch_job_definition" "processor" {
     networkConfiguration = {
       assignPublicIp = "ENABLED"
     }
+    logConfiguration = {
+      logDriver = "awslogs"
+      options = {
+        "awslogs-group"         = "/aws/batch/recipe-processor"
+        "awslogs-region"        = "us-west-2"
+        "awslogs-stream-prefix" = "recipe"
+      }
+    }
   })
+
+  retry_strategy {
+    attempts = 3
+  }
 
   tags = {
     Environment = "dev"
     Project     = "CIRCU-LI-ION"
   }
+
+  depends_on = [aws_ecr_repository.processor]
 } 

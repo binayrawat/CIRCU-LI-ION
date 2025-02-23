@@ -65,6 +65,18 @@ variable "account_id" {
   type        = string
 }
 
+variable "existing_cloudfront_id" {
+  description = "ID of existing CloudFront distribution"
+  type        = string
+  default     = ""
+}
+
+variable "existing_ecr_image" {
+  description = "Existing ECR image URL"
+  type        = string
+  default     = "public.ecr.aws/amazonlinux/amazonlinux:latest"  # Default fallback image
+}
+
 variable "create_cloudfront" {
   description = "Whether to create CloudFront distribution"
   type        = bool

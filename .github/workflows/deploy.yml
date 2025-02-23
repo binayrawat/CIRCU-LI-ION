@@ -103,27 +103,31 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v1
 
-      - name: Check and Store Existing Resources
+      - name: Check Existing Resources
         id: check-resources
         run: |
           # Check CloudFront
-          CF_DIST=$(aws cloudfront list-distributions --query "DistributionList.Items[?contains(Comment, 'Recipe CDN')].{Id:Id,Domain:DomainName}" --output json | jq -r '.[0].Id')
-          if [ "$CF_DIST" != "null" ] && [ ! -z "$CF_DIST" ]; then
-            echo "Found CloudFront distribution: $CF_DIST"
-            echo "cloudfront_id=$CF_DIST" >> $GITHUB_OUTPUT
-            # Create a tfvars file to override CloudFront creation
-            echo "create_cloudfront = false" > override.tfvars
+          CF_ID=$(aws cloudfront list-distributions --query "DistributionList.Items[?contains(Comment, 'Recipe CDN')].Id" --output text)
+          if [ ! -z "$CF_ID" ] && [ "$CF_ID" != "null" ]; then
+            echo "Found existing CloudFront: $CF_ID"
+            echo "create_cloudfront = false" >> override.tfvars
+            echo "existing_cloudfront_id = \"$CF_ID\"" >> override.tfvars
+          else
+            echo "create_cloudfront = true" >> override.tfvars
           fi
-
+          
           # Check ECR
-          ECR_REPO=$(aws ecr describe-repositories --query "repositories[?contains(repositoryName, 'recipe-processor-dev')].repositoryName" --output text)
-          if [ ! -z "$ECR_REPO" ]; then
-            echo "Found ECR repository: $ECR_REPO"
-            echo "ECR_REPOSITORY=$ECR_REPO" >> $GITHUB_ENV
-            echo "ecr_repository=$ECR_REPO" >> $GITHUB_OUTPUT
-            # Add to tfvars
+          ECR_REPO=$(aws ecr describe-repositories --query "repositories[?contains(repositoryName, 'recipe-processor-dev')].repositoryUri" --output text)
+          if [ ! -z "$ECR_REPO" ] && [ "$ECR_REPO" != "null" ]; then
+            echo "Found existing ECR: $ECR_REPO"
             echo "create_ecr = false" >> override.tfvars
+            echo "existing_ecr_image = \"${ECR_REPO}:latest\"" >> override.tfvars
+          else
+            echo "create_ecr = true" >> override.tfvars
+            echo "existing_ecr_image = \"public.ecr.aws/amazonlinux/amazonlinux:latest\"" >> override.tfvars
           fi
+          
+          cat override.tfvars
 
       - name: Terraform Init
         run: terraform init
