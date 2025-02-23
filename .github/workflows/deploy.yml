@@ -60,20 +60,22 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v2
       
-      - name: Setup Python
-        uses: actions/setup-python@v2
-        with:
-          python-version: '3.9'
+      - name: Setup Test Environment
+        run: |
+          mkdir -p tests/processor
+          touch tests/__init__.py
+          touch tests/processor/__init__.py
       
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r tests/requirements-test.txt
           pip install -r src/processor/requirements.txt
+          pip install -e .
       
       - name: Run Tests
         run: |
-          pytest tests/ --cov=src/processor --cov-report=xml
+          python -m pytest tests/ --cov=src/processor --cov-report=xml
           flake8 src/processor/
 
   deploy:
