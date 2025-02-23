@@ -2,6 +2,8 @@ import boto3
 import click
 import json
 import os
+import zipfile
+from io import BytesIO
 from datetime import datetime
 
 def process_recipe(bucket: str, input_key: str, output_key: str) -> bool:
@@ -27,18 +29,24 @@ def process_recipe(bucket: str, input_key: str, output_key: str) -> bool:
         # Process the recipe (add your processing logic here)
         processed_data = recipe_data
         
-        # Upload processed file
+        # Create ZIP file in memory
+        zip_buffer = BytesIO()
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            zip_file.writestr('recipe.json', json.dumps(processed_data))
+        
+        # Upload processed ZIP file
         s3.put_object(
             Bucket=bucket,
             Key=output_key,
-            Body=json.dumps(processed_data)
+            Body=zip_buffer.getvalue(),
+            ContentType='application/zip'
         )
         
         return True
         
     except Exception as e:
         print(f"Error processing recipe: {e}")
-        return False
+        raise  # Re-raise the exception for proper error handling
 
 @click.command()
 @click.option('--bucket', required=True, help='S3 bucket name')
@@ -51,4 +59,8 @@ def main(bucket: str, input_key: str, output_key: str):
         exit(1)
 
 if __name__ == "__main__":
-    main()
+    try:
+        process_recipe()
+    except Exception as e:
+        print(f"Failed to process recipe: {e}")
+        exit(1)
