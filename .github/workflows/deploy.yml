@@ -18,6 +18,8 @@ on:
           - dev
           - prod
         default: 'dev'
+  pull_request:
+    branches: [ main ]
 
 env:
   AWS_REGION: us-west-2
@@ -87,31 +89,35 @@ jobs:
     environment: ${{ github.event.inputs.environment || 'dev' }}
     
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v2
+      - uses: actions/checkout@v2
       
-      - name: Configure AWS Credentials
+      - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v1
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-      
+          aws-region: us-west-2
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v1
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-      
+
       - name: Terraform Init
-        working-directory: ./terraform
         run: terraform init
-      
+
+      # Import existing resources before planning
+      - name: Import existing resources
+        run: |
+          # Import S3 bucket if it exists
+          aws s3 ls s3://circu-li-ion-dev && terraform import aws_s3_bucket.recipe_storage circu-li-ion-dev || echo "Bucket doesn't exist"
+          
+          # Import IAM roles if they exist
+          aws iam get-role --role-name recipe-batch-service-dev && terraform import aws_iam_role.batch_service_role recipe-batch-service-dev || echo "Batch role doesn't exist"
+          aws iam get-role --role-name recipe-task-role-dev && terraform import aws_iam_role.task_role recipe-task-role-dev || echo "Task role doesn't exist"
+
       - name: Terraform Plan
-        working-directory: ./terraform
         run: terraform plan -out=tfplan
-      
+
       - name: Terraform Apply
-        working-directory: ./terraform
         run: terraform apply -auto-approve tfplan
 
   container:
