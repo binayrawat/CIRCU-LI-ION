@@ -42,3 +42,13 @@ module "lambda" {
   step_functions_role_arn = module.security.step_functions_role_arn
   tags                    = var.tags
 }
+
+module "cloudfront" {
+  source = "../../modules/cloudfront"
+
+  project_name         = local.project_name
+  environment         = local.environment
+  s3_bucket_domain_name = module.s3.bucket_domain_name
+  s3_bucket_arn        = module.s3.bucket_arn
+  tags                = local.tags
+}
