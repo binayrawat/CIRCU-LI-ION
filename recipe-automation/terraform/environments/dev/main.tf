@@ -9,9 +9,10 @@ module "network" {
 module "storage" {
   source = "../../modules/storage"
 
-  project_name = var.project_name
-  environment  = var.environment
-  tags         = var.tags
+  project_name     = var.project_name
+  environment      = var.environment
+  cloudfront_oai_id = module.cloudfront.origin_access_identity_id
+  tags            = var.tags
 }
 
 module "security" {

@@ -1,0 +1,99 @@
+name: Destroy Infrastructure
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to destroy (dev/prod)'
+        required: true
+        default: 'dev'
+      confirmation:
+        description: 'Type "DESTROY" to confirm deletion of all resources'
+        required: true
+
+jobs:
+  destroy:
+    runs-on: ubuntu-latest
+    if: github.event.inputs.confirmation == 'DESTROY'
+    environment: ${{ github.event.inputs.environment }}
+
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: us-west-2
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.5.7
+
+      - name: Create backend config
+        working-directory: recipe-automation/terraform/environments/${{ github.event.inputs.environment }}
+        run: |
+          cat > backend.tf << EOF
+          terraform {
+            backend "s3" {
+              bucket         = "${{ secrets.TERRAFORM_STATE_BUCKET }}"
+              key            = "recipe-automation/${{ github.event.inputs.environment }}/terraform.tfstate"
+              region         = "us-west-2"
+              dynamodb_table = "${{ secrets.TERRAFORM_LOCK_TABLE }}"
+              encrypt        = true
+            }
+          }
+          EOF
+
+      - name: Initialize Terraform
+        working-directory: recipe-automation/terraform/environments/${{ github.event.inputs.environment }}
+        run: terraform init
+
+      - name: Empty S3 Buckets
+        working-directory: recipe-automation/terraform/environments/${{ github.event.inputs.environment }}
+        run: |
+          # Get bucket names from terraform state
+          BUCKETS=$(terraform show -json | jq -r '.values.root_module.child_modules[].resources[] | select(.type == "aws_s3_bucket") | .values.id')
+          
+          for bucket in $BUCKETS; do
+            echo "Emptying bucket: $bucket"
+            
+            # Delete all versions and delete markers
+            versions=$(aws s3api list-object-versions --bucket "$bucket" --output json 2>/dev/null || echo '{"Versions":[],"DeleteMarkers":[]}')
+            
+            # Delete objects versions
+            echo "$versions" | jq -r '.Versions[] | select(. != null) | "\(.Key),\(.VersionId)"' | while IFS=, read -r key version; do
+              echo "Deleting object: $key version: $version"
+              aws s3api delete-object --bucket "$bucket" --key "$key" --version-id "$version"
+            done
+            
+            # Delete delete markers
+            echo "$versions" | jq -r '.DeleteMarkers[] | select(. != null) | "\(.Key),\(.VersionId)"' | while IFS=, read -r key version; do
+              echo "Deleting delete marker: $key version: $version"
+              aws s3api delete-object --bucket "$bucket" --key "$key" --version-id "$version"
+            done
+          done
+
+      - name: Destroy Infrastructure
+        working-directory: recipe-automation/terraform/environments/${{ github.event.inputs.environment }}
+        run: terraform destroy -auto-approve
+        env:
+          TF_VAR_project_name: recipe-automation
+          TF_VAR_environment: ${{ github.event.inputs.environment }}
+
+      - name: Clean up backend state
+        if: always()
+        run: |
+          # Delete state file from S3
+          aws s3 rm s3://${{ secrets.TERRAFORM_STATE_BUCKET }}/recipe-automation/${{ github.event.inputs.environment }}/terraform.tfstate
+          
+          # Delete lock from DynamoDB
+          aws dynamodb delete-item \
+            --table-name ${{ secrets.TERRAFORM_LOCK_TABLE }} \
+            --key '{"LockID": {"S": "recipe-automation/${{ github.event.inputs.environment }}/terraform.tfstate-md5"}}' 

@@ -16,4 +16,9 @@ output "distribution_arn" {
 output "oai_iam_arn" {
   value       = aws_cloudfront_origin_access_identity.oai.iam_arn
   description = "CloudFront OAI IAM ARN"
+}
+
+output "origin_access_identity_id" {
+  description = "The ID of the CloudFront Origin Access Identity"
+  value       = aws_cloudfront_origin_access_identity.oai.id
 } 

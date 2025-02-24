@@ -107,3 +107,23 @@ resource "aws_s3_object" "archive" {
   key    = "archive/"
   source = "/dev/null"
 }
+
+# Add S3 bucket policy for CloudFront access
+resource "aws_s3_bucket_policy" "recipes" {
+  bucket = aws_s3_bucket.recipes.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid       = "AllowCloudFrontAccess"
+        Effect    = "Allow"
+        Principal = {
+          AWS = "arn:aws:iam::cloudfront:user/CloudFront Origin Access Identity ${var.cloudfront_oai_id}"
+        }
+        Action   = "s3:GetObject"
+        Resource = "${aws_s3_bucket.recipes.arn}/*"
+      }
+    ]
+  })
+}

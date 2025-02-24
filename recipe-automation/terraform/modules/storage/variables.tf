@@ -13,3 +13,8 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "cloudfront_oai_id" {
+  description = "CloudFront Origin Access Identity ID"
+  type        = string
+}
