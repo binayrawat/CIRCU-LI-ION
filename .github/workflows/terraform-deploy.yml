@@ -129,14 +129,14 @@ jobs:
             --zip-file fileb://split_file.zip
 
           # Update process-chunk Lambda
-          cd ../../../process_chunk/src
+          cd ../../process_chunk/src
           zip -j process_chunk.zip index.py
           aws lambda update-function-code \
             --function-name ${PROJECT_NAME}-${ENVIRONMENT}-process-chunk \
             --zip-file fileb://process_chunk.zip
 
           # Update merge-results Lambda
-          cd ../../../merge_results/src
+          cd ../../merge_results/src
           zip -j merge_results.zip index.py
           aws lambda update-function-code \
             --function-name ${PROJECT_NAME}-${ENVIRONMENT}-merge-results \
