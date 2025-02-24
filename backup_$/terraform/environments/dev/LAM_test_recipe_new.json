@@ -1,0 +1,9 @@
+{
+  "recipes": [
+    {
+      "name": "Test Recipe 1",
+      "ingredients": ["ingredient1", "ingredient2"],
+      "steps": ["step1", "step2"]
+    }
+  ]
+}

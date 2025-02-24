@@ -1,0 +1,17 @@
+{
+  "recipes": [
+    {
+      "name": "Test Recipe",
+      "ingredients": [
+        {"name": "Flour", "amount": "2 cups"},
+        {"name": "Sugar", "amount": "1 cup"},
+        {"name": "Eggs", "amount": "2 large"}
+      ],
+      "instructions": [
+        "Mix dry ingredients",
+        "Add eggs and mix well",
+        "Bake at 350F for 25 minutes"
+      ]
+    }
+  ]
+}

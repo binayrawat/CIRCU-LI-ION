@@ -1,0 +1,1 @@
+{"statusCode": 200, "chunks": [{"bucket": "recipe-automation-dev-recipes", "key": "uploads/test-recipe.json", "chunk_number": 0, "start_byte": 0, "end_byte": 368, "total_chunks": 1}], "original_file": {"bucket": "recipe-automation-dev-recipes", "key": "uploads/test-recipe.json", "size": 369}}

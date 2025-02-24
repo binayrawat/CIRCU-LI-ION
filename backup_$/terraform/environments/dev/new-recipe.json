@@ -1,0 +1,14 @@
+{
+  "name": "New Test Recipe",
+  "ingredients": [
+    {
+      "item": "test ingredient",
+      "amount": 1,
+      "unit": "cup"
+    }
+  ],
+  "instructions": [
+    "Step 1",
+    "Step 2"
+  ]
+}

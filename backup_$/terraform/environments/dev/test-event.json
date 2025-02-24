@@ -1,0 +1,14 @@
+{
+  "Records": [
+    {
+      "s3": {
+        "bucket": {
+          "name": "recipe-automation-dev-recipes"
+        },
+        "object": {
+          "key": "uploads/new-recipe123.json"
+        }
+      }
+    }
+  ]
+}

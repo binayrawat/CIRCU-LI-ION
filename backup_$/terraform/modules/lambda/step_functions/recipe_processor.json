@@ -1,0 +1,33 @@
+{
+  "Comment": "Recipe Processing Workflow",
+  "StartAt": "SplitFile",
+  "States": {
+    "SplitFile": {
+      "Type": "Task",
+      "Resource": "${split_file_lambda_arn}",
+      "Next": "ProcessChunks",
+      "ResultPath": "$.chunks"
+    },
+    "ProcessChunks": {
+      "Type": "Map",
+      "ItemsPath": "$.chunks",
+      "MaxConcurrency": 10,
+      "Iterator": {
+        "StartAt": "ProcessChunk",
+        "States": {
+          "ProcessChunk": {
+            "Type": "Task",
+            "Resource": "${process_chunk_lambda_arn}",
+            "End": true
+          }
+        }
+      },
+      "Next": "MergeResults"
+    },
+    "MergeResults": {
+      "Type": "Task",
+      "Resource": "${merge_results_lambda_arn}",
+      "End": true
+    }
+  }
+} 
