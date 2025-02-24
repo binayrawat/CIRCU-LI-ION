@@ -1,1 +1,1 @@
-{"statusCode": 200, "chunks": [{"bucket": "recipe-automation-dev-recipes", "key": "uploads/test-recipe.json", "chunk_number": 0, "start_byte": 0, "end_byte": 368, "total_chunks": 1}], "original_file": {"bucket": "recipe-automation-dev-recipes", "key": "uploads/test-recipe.json", "size": 369}}
+{"errorMessage": "'Records'", "errorType": "KeyError", "requestId": "eb45d1de-8368-4aa2-93fb-0db3ce0bd54d", "stackTrace": ["  File \"/var/task/index.py\", line 9, in lambda_handler\n    bucket = event['Records'][0]['s3']['bucket']['name']\n"]}
