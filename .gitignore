@@ -1,0 +1,11 @@
+*.terraform/providers/
+large_recipe.json
+# Large files
+*.terraform/providers/
+large_recipe.json
+
+# Provider files
+**/.terraform/providers/
+
+# Large test files
+**/large_*.json
