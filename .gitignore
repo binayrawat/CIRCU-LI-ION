@@ -9,3 +9,5 @@ large_recipe.json
 
 # Large test files
 **/large_*.json
+*.txt
+payload.json
