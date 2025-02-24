@@ -1,11 +1,16 @@
 output "distribution_id" {
+  description = "The identifier for the CloudFront distribution"
   value       = aws_cloudfront_distribution.recipe_distribution.id
-  description = "CloudFront distribution ID"
 }
 
 output "distribution_domain_name" {
+  description = "The domain name corresponding to the CloudFront distribution"
   value       = aws_cloudfront_distribution.recipe_distribution.domain_name
-  description = "CloudFront distribution domain name"
+}
+
+output "distribution_arn" {
+  description = "The ARN (Amazon Resource Name) for the CloudFront distribution"
+  value       = aws_cloudfront_distribution.recipe_distribution.arn
 }
 
 output "oai_iam_arn" {

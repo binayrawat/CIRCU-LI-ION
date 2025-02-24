@@ -46,9 +46,9 @@ module "lambda" {
 module "cloudfront" {
   source = "../../modules/cloudfront"
 
-  project_name         = local.project_name
-  environment         = local.environment
-  s3_bucket_domain_name = module.s3.bucket_domain_name
-  s3_bucket_arn        = module.s3.bucket_arn
-  tags                = local.tags
+  project_name         = var.project_name
+  environment         = var.environment
+  s3_bucket_domain_name = module.storage.recipe_bucket_domain_name
+  s3_bucket_arn        = module.storage.recipe_bucket_arn
+  tags                = var.tags
 }
