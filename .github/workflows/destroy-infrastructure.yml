@@ -7,9 +7,14 @@ on:
         description: 'Environment to destroy (dev/prod)'
         required: true
         default: 'dev'
+        type: choice
+        options:
+          - dev
+          - prod
       confirmation:
         description: 'Type "DESTROY" to confirm deletion of all resources'
         required: true
+        type: string
 
 jobs:
   destroy:
@@ -36,7 +41,7 @@ jobs:
         with:
           terraform_version: 1.5.7
 
-      - name: Create backend config
+      - name: Initialize Terraform
         working-directory: recipe-automation/terraform/environments/${{ github.event.inputs.environment }}
         run: |
           cat > backend.tf << EOF
@@ -50,50 +55,54 @@ jobs:
             }
           }
           EOF
+          terraform init
 
-      - name: Initialize Terraform
-        working-directory: recipe-automation/terraform/environments/${{ github.event.inputs.environment }}
-        run: terraform init
-
-      - name: Empty S3 Buckets
+      - name: Force Empty S3 Buckets
         working-directory: recipe-automation/terraform/environments/${{ github.event.inputs.environment }}
         run: |
-          # Get bucket names from terraform state
+          # Get all bucket names from terraform state
           BUCKETS=$(terraform show -json | jq -r '.values.root_module.child_modules[].resources[] | select(.type == "aws_s3_bucket") | .values.id')
           
           for bucket in $BUCKETS; do
-            echo "Emptying bucket: $bucket"
+            echo "Forcefully emptying bucket: $bucket"
             
-            # Delete all versions and delete markers
-            versions=$(aws s3api list-object-versions --bucket "$bucket" --output json 2>/dev/null || echo '{"Versions":[],"DeleteMarkers":[]}')
-            
-            # Delete objects versions
-            echo "$versions" | jq -r '.Versions[] | select(. != null) | "\(.Key),\(.VersionId)"' | while IFS=, read -r key version; do
+            # Remove bucket versioning first
+            aws s3api put-bucket-versioning --bucket "$bucket" --versioning-configuration Status=Suspended
+
+            # Delete all objects including versions and delete markers
+            aws s3api list-object-versions --bucket "$bucket" --output json 2>/dev/null | \
+            jq -r '.Versions?[]? | "\(.Key) \(.VersionId)" | select(. != null)' | \
+            while read -r key version; do
               echo "Deleting object: $key version: $version"
-              aws s3api delete-object --bucket "$bucket" --key "$key" --version-id "$version"
+              aws s3api delete-object --bucket "$bucket" --key "$key" --version-id "$version" --bypass-governance-retention
             done
-            
+
             # Delete delete markers
-            echo "$versions" | jq -r '.DeleteMarkers[] | select(. != null) | "\(.Key),\(.VersionId)"' | while IFS=, read -r key version; do
+            aws s3api list-object-versions --bucket "$bucket" --output json 2>/dev/null | \
+            jq -r '.DeleteMarkers?[]? | "\(.Key) \(.VersionId)" | select(. != null)' | \
+            while read -r key version; do
               echo "Deleting delete marker: $key version: $version"
-              aws s3api delete-object --bucket "$bucket" --key "$key" --version-id "$version"
+              aws s3api delete-object --bucket "$bucket" --key "$key" --version-id "$version" --bypass-governance-retention
             done
+
+            # Delete any remaining objects (non-versioned)
+            echo "Removing any remaining objects..."
+            aws s3 rm s3://"$bucket" --recursive --force
+
+            echo "Bucket $bucket emptied"
           done
 
       - name: Destroy Infrastructure
         working-directory: recipe-automation/terraform/environments/${{ github.event.inputs.environment }}
-        run: terraform destroy -auto-approve
         env:
           TF_VAR_project_name: recipe-automation
           TF_VAR_environment: ${{ github.event.inputs.environment }}
+        run: terraform destroy -auto-approve
 
-      - name: Clean up backend state
-        if: always()
+      - name: Clean up Terraform state
+        if: success()
         run: |
-          # Delete state file from S3
-          aws s3 rm s3://${{ secrets.TERRAFORM_STATE_BUCKET }}/recipe-automation/${{ github.event.inputs.environment }}/terraform.tfstate
-          
-          # Delete lock from DynamoDB
+          aws s3 rm s3://${{ secrets.TERRAFORM_STATE_BUCKET }}/recipe-automation/${{ github.event.inputs.environment }}/terraform.tfstate --force
           aws dynamodb delete-item \
             --table-name ${{ secrets.TERRAFORM_LOCK_TABLE }} \
-            --key '{"LockID": {"S": "recipe-automation/${{ github.event.inputs.environment }}/terraform.tfstate-md5"}}' 
+            --key '{"LockID": {"S": "recipe-automation/${{ github.event.inputs.environment }}/terraform.tfstate-md5"}}'
